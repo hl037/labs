@@ -30,7 +30,7 @@ setup(
     long_description_content_type='text/markdown',
     author='Léo Flaventin Hauchecorne',
     author_email='hl037.prog@gmail.com',
-    url='https://gitea.dev.leo-flaventin.com/labs',
+    url='https://github.com/hl037/labs',
     license='GPLv3',
     packages=find_packages(),
     test_suite=None,
@@ -43,9 +43,6 @@ setup(
         'labs=labs.cli:main',
       ]
     },
-    #package_data={
-    #  'module' : ['module/path/to/data', 'path/to/glob/*'],
-    #},
     classifiers=[],
     **EXTRAS
 )
