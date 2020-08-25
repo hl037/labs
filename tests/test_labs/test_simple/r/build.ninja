@@ -1,0 +1,40 @@
+
+##############################
+########## Preamble ##########
+##############################
+
+# This is an auto generated file by Labs (Language Agnostic Build System).
+# Any modification to this file will be overwriten by subsequent call to Labs.
+# The file was generated from ../t/labs_build.py
+# for the source directory ../t
+# in the build directory ..
+
+################################################################################
+
+
+##############################
+######### Variables  #########
+##############################
+
+
+
+##############################
+########### Rules  ###########
+##############################
+
+rule concat
+  command = cat$ ${in}$ >$ ${out}
+
+
+##############################
+########### Builds ###########
+##############################
+
+build truc2 : concat ../t/machin1 ../t/truc1 | /usr/bin/cat
+  
+
+
+##############################
+########## The End  ##########
+##############################
+
