@@ -35,16 +35,17 @@ The project is still at a draft step : Only the low-level api is developped yet,
     - [x] CMake-like semantic shadow build
     - [x] CMake-like incremental cache
   - [x] Feature testing framework
+  - [x] High level interface (Node of build graph)
   - [ ] Documentation
     - [x] In code docstring
     - [ ] Tutorial
-  - [ ] Extension system
+  - [ ] Extension system (and import them from labs.ext)
   - [ ] Install rules
   - [ ] GCC compatible workflow (anything that compiles to \*.o files
     - [ ] Compile wrapper class
     - [ ] Understand common C/CXX env variables
     - [ ] Handle include paths
-    - [ ] Handle libs
+    - [ ] Unified library object (providing compile flags, include paths, library links etc.)
   - [ ] auto\_build function to compile with the right compiler automatically regarding the file ype.
   - [ ] sub project
   - [ ] find\_lib

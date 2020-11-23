@@ -7,10 +7,11 @@ from pathlib import Path
 from itertools import chain
 from collections import namedtuple
 
-from addict import Dict as C
+from .utils import Dict
 
 from . import ninja
 from . import cmake
+from .utils import Graph
 
 explicit = ninja.explicit
 implicit = ninja.implicit
@@ -21,6 +22,9 @@ class ProgramNotFoundError(RuntimeError):
   pass
 
 class RuleNameConflictError(RuntimeError):
+  pass
+
+class VariablesNotInProjectError(RuntimeError):
   pass
 
 class Rule(ninja.Rule):
@@ -99,7 +103,7 @@ class Program(object):
   def run(self, *args, **kwargs):
     """
     All parameters will be forwarded to subprocess.run. To have even more flexibility to handle less
-    common cases, you can you Popen().
+    common cases, you can use Popen().
     """
     if self.path is None :
       raise ProgramNotFoundError()
@@ -109,7 +113,7 @@ class Program(object):
   
   def Popen(self, *args, **kwargs):
     """
-    Lowest level function to create a process. Creates a subprocess.Popen instance with the supied arguments.
+    Lowest level function to create a process. Creates a subprocess.Popen instance with the suplied arguments.
     """
     if self.path is None :
       raise ProgramNotFoundError()
@@ -130,13 +134,22 @@ class Program(object):
     if len(args) == 1 and not isinstance(args[0], str) :
       args = list(args[0])
     #kwargs['command'] = shlex.join(chain((str(self.path),), args))
-    kwargs['command'] =' '.join(
-      chain(
-        (shlex.quote(str(self.path)),),
-        (str(a) if isinstance(a, ninja.Variable) else shlex.quote(a) for a in args)
+    if 'command' not in kwargs :
+      kwargs['command'] =' '.join(
+        chain(
+          (shlex.quote(str(self.path)),),
+          (str(a) if isinstance(a, ninja.Variable) else shlex.quote(a) for a in args)
+        )
       )
-    )
     return self >> self.project.Rule(name, **kwargs)
+  
+  def variable(self, name=None):
+    if name is None :
+      name = f'program_{self.name}'
+    v = self.project.variables.get(name, None)
+    if v is not None :
+      return v
+    return self.project.Variable(name, str(self.path))
 
   def __rshift__(self, o):
     if isinstance(o, Rule) :
@@ -157,10 +170,10 @@ class _VariableProxy(object):
       _setattr(k, v)
 
   def __getattr__(self, k):
-    return self._parent.variables[k].val
+    return self._parent.variables[k].value
 
   def __setattr__(self, k, v):
-    self._parent.variables[k] = str(val)
+    self._parent.variables[k] = str(value)
 
 class _VariableProject(ninja.Variable):
   def __init__(self, name, val_cb):
@@ -168,8 +181,12 @@ class _VariableProject(ninja.Variable):
     self.val_cb = val_cb
 
   @property
-  def val(self):
+  def value(self):
     return self.val_cb()
+
+def _varDep(v:ninja.Variable):
+  return ( dep for dep in v.value.value if isinstance(dep, ninja.Variable) )
+  
 
 class Project(object):
   """
@@ -180,10 +197,10 @@ class Project(object):
     self.rules = dict()
     self.build_rules = dict()
     self.build_rules_flat = []
-    self.variables = C()
+    self.variables = Dict()
     self.v = _VariableProxy(self)
-    self.config = C(config)
-    self.declared_options = C()
+    self.config = Dict(config)
+    self.declared_options = Dict()
     self.labs_path = labs_path
     self.src_dir = src_dir
     self.build_dir = build_dir
@@ -197,8 +214,8 @@ class Project(object):
   def Program(self, name:str, path:Path=None):
     return Program(self, name, path)
 
-  def Variable(self, name, val):
-    v = ninja.Variable(name, val)
+  def Variable(self, name, value):
+    v = ninja.Variable(name, value)
     self.add_variable(v)
     return v
 
@@ -246,8 +263,8 @@ class Project(object):
       s.add(b)
     self.build_rules_flat.append(b)
 
-  def add_variable(self):
-    self.variables[name] = v
+  def add_variable(self, v):
+    self.variables[v.name] = v
   
   def __lshift__(self, o):
     if isinstance(o, ninja.Build) :
@@ -309,7 +326,10 @@ class Project(object):
   def writeNinja(self, f):
     f.write(self.ninja_preamble)
     f.write(self.ninja_sep_before_variables)
-    for v in self.variables.values() :
+    sorted_vars = Graph(self.variables.values(), _varDep).topologicalSort(False)
+    if len(sorted_vars) != len(self.variables) :
+      raise VariablesNotInProjectError('Some variables have not been created in the project')
+    for v in sorted_vars :
       f.write(v.toNinja())
       f.write('\n')
     f.write(self.ninja_sep_before_rules)
@@ -370,7 +390,7 @@ class Project(object):
 
 '''
   def writeCache(self, f):
-    conf = C(self.config)
+    conf = Dict(self.config)
     f.write(self.cache_preamble)
     f.write(self.cache_sep_before_user_declared)
     keys = sorted(self.declared_options.keys())
@@ -388,7 +408,7 @@ class Project(object):
       f.write(cmake.varToCache(k, c))
       f.write('\n\n')
     for c in (self.v_labs, self.v_src, self.v_build) :
-      f.write(cmake.varToCache(c.name, c.val))
+      f.write(cmake.varToCache(c.name, c.value))
       f.write('\n\n')
     f.write(self.cache_end)
 
@@ -424,8 +444,13 @@ class LabsContext(object):
       'v_src' : self.project.v_src,
       'v_build' : self.project.v_build,
       'v' : self.project.v,
+      'variables' : self.project.variables,
       
       
+      'explicit' : ninja.explicit,
+      'implicit' : ninja.implicit,
+      'order_only' : ninja.order_only,
+
       'v_command' : ninja.v_command,
       'v_depfile' : ninja.v_depfile,
       'v_deps' : ninja.v_deps,
@@ -470,7 +495,7 @@ class Labs(object):
       self.build_path = Path(build_path).resolve()
     self.override_config = config
     
-    config = C()
+    config = Dict()
     
     if use_cache :
       cache_path = self.build_path / self.default_cache_filename

@@ -1,7 +1,7 @@
 from pathlib import Path
 from itertools import chain
 import operator as op
-from addict import Dict as C
+from .utils import Dict
 
 
 def _defOps(a, loc):
@@ -9,11 +9,15 @@ def _defOps(a, loc):
   _rop = f'__r{a}__'
   _iop = f'__i{a}__'
   def o(self, oth):
-    if not isinstance(oth, self.__class__) :
+    if not isinstance(self, oth.__class__) :
+      if isinstance(oth, Target) :
+        return NotImplemented
       oth = self.__class__(oth)
     return self.__class__(getattr(op, _op)(self.paths, oth.paths))
   def ro(self, oth):
-    if not isinstance(oth, self.__class__) :
+    if not isinstance(self, oth.__class__) :
+      if isinstance(oth, Target) :
+        return NotImplemented
       oth = self.__class__(oth)
     return self.__class__(getattr(op, _op)(oth.paths, self.paths))
   def io(self, oth):
@@ -55,8 +59,11 @@ class Target(object):
   def __len__(self):
     return len(self.paths)
 
+  def sorted(self):
+    return sorted(self.paths)
+
   def toNinja(self):
-    return ' '.join(escape(str(p)) for p in sorted(self.paths))
+    return ' '.join(escape(str(p)) for p in self.sorted())
       
 del _defOps
 
@@ -95,9 +102,9 @@ class Variable(object):
   """
   A toplevel variable. 
   """
-  def __init__(self, name, val=''):
+  def __init__(self, name, value=''):
     self.name = str(name)
-    self.val = str(val)
+    self.value = Expr(str(value))
     
   def __add__(self, other):
     return Expr(self) + other
@@ -109,7 +116,7 @@ class Variable(object):
     return f'${{{self.name}}}'
 
   def toNinja(self):
-    return f'{self.name} = {self.val}'
+    return f'{self.name} = {self.value}'
 
 class VariableBuiltin(Variable):
   def toNinja(self):
@@ -129,10 +136,10 @@ class BuildTarget(object):
   def __get__(self, obj, owner=None):
     return self
 
-  def __set__(self, obj, val):
+  def __set__(self, obj, value):
     raise AttributeError()
 
-  def __delete__(self, obj, val):
+  def __delete__(self, obj, value):
     raise AttributeError()
 
   def __lshift__(self, oth):
@@ -154,10 +161,10 @@ class BuildInputTarget(object):
   def __get__(self, obj, owner=None):
     return self
 
-  def __set__(self, obj, val):
+  def __set__(self, obj, value):
     raise AttributeError()
 
-  def __delete__(self, obj, val):
+  def __delete__(self, obj, value):
     raise AttributeError()
 
   def __lshift__(self, oth):
@@ -207,7 +214,7 @@ class Build(object):
   """
   def __init__(self, rule:'Rule', *args, **kwargs):
     self.rule = rule
-    self.v = C(kwargs)
+    self.v = Dict(kwargs)
     for k, v in args :
       self.v[k] = v
     self.explicit = BuildTarget()
@@ -252,10 +259,19 @@ class Rule(object):
   Rule section of ninja
   """
   Build = Build
+  
+  class Variable(VariableBuiltin):
+    pass
+
+  class VariableDict(Dict):
+    def __missing__(self, name):
+      r = self.Variable(name)
+      self[name] = r
+      return r
 
   def __init__(self, name, **kwargs):
     self.name = name
-    self.v = C(kwargs)
+    self.v = Dict(kwargs)
 
   @classmethod
   def __init_subclass__(cls, /, Build_cls=Build, **kwargs):

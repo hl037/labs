@@ -1,7 +1,7 @@
 
 
 from labs import Labs
-from addict import Dict as C
+from .utils import Dict
 import click
 
 

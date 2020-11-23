@@ -1,0 +1,48 @@
+
+##############################
+########## Preamble ##########
+##############################
+
+# This is an auto generated file by Labs (Language Agnostic Build System).
+#
+# The file was generated from ../t/labs_build.py
+# for the source directory ../t
+# in the build directory .
+#
+# You should modify it to change build options.
+# When running Labs again, a new cache will be generated considering the values of the previous.
+# The sythax is the same as CMake's CMakeCache.txt :
+# KEY:TYPE=VALUE
+# KEY is the name of a variable in the cache.
+# TYPE is a hint to GUI's for the type of VALUE, DO NOT EDIT TYPE!.
+# VALUE is the current value for the KEY.
+
+################################################################################
+
+
+##############################
+#### Configurable entries ####
+##############################
+
+
+
+##############################
+###### Internal entries ######
+##############################
+
+__LABS_ABSPATH:INTERNAL=0
+
+__LABS_RELPATH:INTERNAL=1
+
+labs_path:INTERNAL=../t/labs_build.py
+
+src_dir:INTERNAL=../t
+
+build_dir:INTERNAL=.
+
+
+
+##############################
+########## The End  ##########
+##############################
+

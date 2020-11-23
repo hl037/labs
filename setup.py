@@ -23,7 +23,7 @@ if sys.version_info < (3,):
     EXTRAS['use_2to3'] = True
 
 setup(
-    name='labs',
+    name='labs-build',
     version='0.1.dev0',
     description='',
     long_description=LONG_DESC,

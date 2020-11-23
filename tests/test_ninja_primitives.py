@@ -47,10 +47,10 @@ class TestVariableAndExpr:
     assert 'This$ is$ an$:$\n...escaped$ str$ $${var}' == escape('This is an:\n...escaped str ${var}')
 
   def test_variable_str(self):
-    assert '${var}' == str(Variable('var', 'val'))
+    assert '${var}' == str(Variable('var', 'value'))
     
   def test_variable_noNinja(self):
-    assert 'var = val' == Variable('var', 'val').toNinja()
+    assert 'var = value' == Variable('var', 'value').toNinja()
   
   def test_Expr_simple(self):
     assert 'This$ is$ an$:$\n...escaped$ str$ $${var}' == str(Expr(('This is an:\n...escaped str ${var}')))
@@ -65,12 +65,12 @@ class TestVariableAndExpr:
     assert 'This$ is$ an$ addition' == str('This ' + (Expr('is ') + 'an ') + 'addition')
 
   def test_Expr_variable(self):
-    assert '${var}' == str(Expr(Variable('var', 'val')))
+    assert '${var}' == str(Expr(Variable('var', 'value')))
     
   def test_Expr_add_variable(self):
-    assert 'This$ is$ an$ ${addition}' == str(Expr('This is an ') + Variable('addition', 'val'))
-    assert '${this}$ is$ an$ addition' == str(Variable('this', 'val') + Expr(' is an addition'))
-    assert '${this}$ is$ ${an}${addition}' == str(Variable('this', 'val') +(Expr(' is ') + Variable('an', 'val') ) + Expr(Variable('addition', 'val')))
+    assert 'This$ is$ an$ ${addition}' == str(Expr('This is an ') + Variable('addition', 'value'))
+    assert '${this}$ is$ an$ addition' == str(Variable('this', 'value') + Expr(' is an addition'))
+    assert '${this}$ is$ ${an}${addition}' == str(Variable('this', 'value') +(Expr(' is ') + Variable('an', 'value') ) + Expr(Variable('addition', 'value')))
 
 
 class TestRule:
