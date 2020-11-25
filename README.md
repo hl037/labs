@@ -39,7 +39,7 @@ The project is still at a draft step : Only the low-level api is developped yet,
   - [ ] Documentation
     - [x] In code docstring
     - [ ] Tutorial
-  - [ ] Extension system (and import them from labs.ext)
+  - [x] Extension system (and import them from labs.ext) [TODO : test installed module extension, zip etc.]
   - [ ] Install rules
   - [ ] GCC compatible workflow (anything that compiles to \*.o files
     - [ ] Compile wrapper class

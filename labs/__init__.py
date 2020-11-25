@@ -537,6 +537,8 @@ class Labs(object):
       return cmake.parse_cache(f)
 
   def process(self):
+    import labs.ext as ext
+    import labs.runtime as runtime
     
     self.build_path.mkdir(parents=True, exist_ok=True)
     
@@ -544,16 +546,22 @@ class Labs(object):
       labs_src = f.read()
     labs_code = compile(labs_src, self.labs_path, 'exec')
 
-    ctx = LabsContext(self)
+    try:
+      ctx = LabsContext(self)
+      runtime._ctx = ctx
 
-    _locals = dict()
-    exec(labs_code, ctx.getContext(), _locals)
+      _locals = dict()
+      exec(labs_code, ctx.getContext(), _locals)
 
-    with (self.build_path/self.default_ninja_build_filename).open('w') as f :
-      self.project.writeNinja(f)
+      with (self.build_path/self.default_ninja_build_filename).open('w') as f :
+        self.project.writeNinja(f)
 
-    with (self.build_path/self.default_cache_filename).open('w') as f :
-      self.project.writeCache(f)
+      with (self.build_path/self.default_cache_filename).open('w') as f :
+        self.project.writeCache(f)
+    finally:
+      ext._clean()
+      runtime._ctx = None
+    
     
     
 
