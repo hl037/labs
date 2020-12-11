@@ -7,14 +7,16 @@ Everythin is articulated around the Toolchain concept. A toolchain is analog to 
 A Compiler knows how to translate a set of file of the type it supports as input to other file of another 
 """
 
-from functools import reduce, cached_property
-from typing import Union, Any
 import operator
+from pathlib import Path
+from collections import deque
+from functools import reduce, cached_property
 from .utils import Dict, DefaultDict
 from . import ninja
-from pathlib import Path
 import labs.runtime as lrt
-from typing import Sequence
+from labs.options import DeclaredOption
+
+from typing import Sequence, Union, Iterable, Union, Any
 
 class FileTypeNotFound(RuntimeError):
   pass
@@ -74,17 +76,19 @@ class FileSet(ninja.Target):
   """
   Set of input files
   """
-  def __init__(self, *args, conf:Dict=None, import_conf=True):
+  def __init__(self, *args, conf:Dict=None, import_conf=True, cwd=Path()):
     if len(args) == 1 :
       a, = args
       if isinstance(a, FileSet) and conf is None:
         self.list = list(a.list)
         self.set = set(a.set)
         self.conf = Dict(a.conf)
+        self.cwd = a.cwd
         return
     self.set = set()
     self.list = []
     self.conf = Dict()
+    self.cwd = cwd
     for a in args :
       self |= a
     if not import_conf :
@@ -103,13 +107,13 @@ class FileSet(ninja.Target):
       oth = oth.decode('utf8'),
     elif isinstance(oth, (str, Path)) :
       oth = oth,
+    elif isinstance(oth, FileSet) :
+      self.conf |= oth.conf
     for a in oth :
-      p = Path(a)
+      p = self.cwd / a
       if p not in self.set :
         self.set.add(p)
         self.list.append(p)
-    if isinstance(oth, FileSet) :
-      self.conf |= oth.conf
     return self
 
   def __or__(self, oth):
@@ -118,19 +122,19 @@ class FileSet(ninja.Target):
     return res
 
   def __ror__(self, oth):
-    res = FileSet(oth)
+    res = FileSet(oth, cwd=self.cwd)
     res |= self
     return res
 
   def filter(self, pred):
-    res = FileSet()
+    res = FileSet(cwd=self.cwd)
     res.list = [ a for a in self if pred(a) ]
     res.set = set(res.list)
     res.conf = Dict(self.conf)
     return res
 
   def partition(self, pred):
-    true_set, false_set = FileSet(), FileSet()
+    true_set, false_set = FileSet(cwd=self.cwd), FileSet(cwd=self.cwd)
     pred = [ pred(a) for a in self ]
     true_set.list = [ a for a, p in zip(self, pred) if p ]
     false_set.list = [ a for a, p in zip(self, pred) if not p ]
@@ -141,7 +145,7 @@ class FileSet(ninja.Target):
     return true_set, false_set
 
   def filter_drop(self, pred):
-    true_set = FileSet()
+    true_set = FileSet(cwd=self.cwd)
     pred = [ pred(a) for a in self ]
     true_set.list = [ a for a, p in zip(self, pred) if p ]
     self.list = [ a for a, p in zip(self, pred) if not p ]
@@ -165,7 +169,7 @@ class FileSet(ninja.Target):
       except:
         _d['_'].append(p)
     for k, l in _d.items() :
-      fs = FileSet()
+      fs = FileSet(cwd=self.cwd)
       fs.list = l
       fs.set = set(l)
       fs.conf = Dict(self.conf)
@@ -206,8 +210,8 @@ class FileSet(ninja.Target):
   def paths(self):
     return self.set
 
-  def sorted(self):
-    return self.list
+  def str_sorted(self):
+    return map(str, self.list)
 
   def ni(self): # pragma: no cover
     return NotImplemented
@@ -226,11 +230,8 @@ class FileSet(ninja.Target):
 
   del ni
 
-    
-        
 
 
-        
 
 class Node(object):
   """
@@ -238,48 +239,121 @@ class Node(object):
   """
 
   def __init__(self, ctx=None):
-    self.frozen = True
-    self.input = Dict()
+    self._frozen = False
+    self._processing = False
+    self._input = deque()
+    self._output = deque()
     if ctx is None :
       ctx = lrt.get_ctx()
+    self.ctx = ctx
+    self._ctx = ctx.getContext()
     self.project = ctx.project
-    self.__dict__.update(ctx.getContext())
+    self.project.add(self)
+    self.dependencies = []
 
-  def add(self, file_set:FileSet):
+  def __getattr__(self, k):
+    try:
+      return self._ctx[k]
+    except KeyError as e:
+      raise AttributeError(k) from e
+
+  def declare_local_option(self, name, *args, **kwargs) -> DeclaredOption:
+    """
+    Declare an option local to this node (self.opt_prefix and self.name will be prefixed to the option name)
+    """
+    name = getattr(self, self.opt_prefix, '') + name
+    return self.declare_option(name, *args, **kwargs)
+
+  def add(self, *dependencies:Union[ninja.Target, FileSet, 'Node']):
     """
     Add a file set to the input of the node. This function should normally not be reimplemented in subclass
     """
-    if self.frozen :
+    if self._frozen :
       raise NodeIsFrozenError()
-    for k, v in file_set.split_types().items() :
-      m = getattr(self, f'add_{k}', self.add_)
-      m(v)
-
-  def add_(self, file_set:FileSet):
-    """
-    Add a file set of unknown type, or that has no add_* handler to the input of the node. Default behaviour is to add files to the self.input dict
-    """
-    fs = self.input.get(file_set.conf.lang, None) 
-    if fs is None :
-      self.input[file_set.conf.lang] = file_set
+    if self._processing :
+      self._input.extendleft(reversed(dependencies))
       return
-    fs |= file_set
+    for dep in dependencies :
+      if isinstance(dep, Node) :
+        self._input.append(Node)
+        continue
+      if isinstance(dep, ninja.Expr) :
+        dep = ninja.Target(dep)
+      if not isinstance(dep, (FileSet, ninja.Target)) :
+        dep = self.FileSet(dep)
+      self._input.append(dep)
+
+  def preprocess(self) -> Iterable[Union[FileSet, ninja.Target]]:
+    """
+    Called when the processing of the node starts. Overide this hook when you want to do some preprocessing knowing the node is about to be processed.
+    Note : the self._processing flag will still be False in this node. Thus, you can call self.add(...) to add some input to be processed at the end.
+    
+    @return Collection of FileSet that should be added to the output.
+    """
+    pass
+
+  def postprocess(self) -> Iterable[Union[FileSet, ninja.Target]]:
+    """
+    Called when all the input have been processed. Overiding this hook permits to add additionnal rules and output,
+    for example from the processing of an additional nodes that would have gathered input from the process_* functions.
+    Note : the self._frozen will be set to True thus you won't be able to call self.add() in this method.
+    
+    @return Collection of FileSet that should be added to the output.
+    """
+    pass
+      
+  def _extend_output(self, outs):
+    if outs is None :
+      return
+    self._output.extend(outs)
+
+  def process(self):
+    """
+    Process the node. It will call all self.process_* function on each inputs.
+    These methods should return an iterable of the output to add, and can call self.add() to reinject other sources.
+    """
+    if self._frozen :
+      return
+    if self._processing :
+      raise RecursionError('Already processing this node. Check for recursive Node dependency ?')
+    self._extend_output(self.preprocess())
+    self._processing = True
+    while self._input :
+      dep = self._input.popleft()
+      if isinstance(dep, Node) :
+        self.add(*dep.output)
+      elif isinstance(dep, FileSet) :
+        for lang, fs in dep.split_types().items() :
+          self._extend_output(
+            getattr(self, f'process_{lang}', self.process_)(fs)
+          )
+      elif isinstance(dep, ninja.Target) :
+        self._extend_output(self.process_target(dep))
+      else:
+        ValueError(f'This node type is not ({self.__class__.__name__}) is not able to process ({dep.__class__.__name__}) type')
+    self._frozen = True
+    self._extend_output(self.postprocess())
   
-  def _get_output(self) -> Sequence[FileSet]:
+  def process_target(self, tar) -> Iterable[Union[FileSet, ninja.Target]]:
     """
-    Compute the output of the node (a set of FileSet). Should be reimplemented in subclasses.
+    Process function for raw Target inputs. The default behavior is to raise a ValueError, since this is an edge case to support dynamic targets, and except for some special use cases, it is prefered to only manipulate FileSet.
     """
-    raise NotImplementedError()
+    raise ValueError(f'This node type ({self.__class__.__name__}) is not able to process raw Target input')
 
-
+  def process_(self, fs:FileSet) -> Iterable[Union[FileSet, ninja.Target]]:
+    """
+    Default process function. The default raise an error saying the node is not able to process this file type.
+    Any input added through self.add() will be processed immediately after this node, in Last added first processed order.
+    """
+    raise ValueError(f'This node type ({self.__class__.__name__}) is not able to process "{fs.conf.lang}" file type')
   
   @cached_property
-  def output(self):
+  def output(self) -> Iterable[Union[FileSet, ninja.Target]]:
     """
     Freeze the node and get its output
     """
-    self.frozen = True
-    return self._get_output()
+    self.process()
+    return self._output
 
 
 

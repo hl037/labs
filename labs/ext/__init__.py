@@ -1,5 +1,5 @@
 
-from .runtime import get_ctx
+from labs.runtime import get_ctx
 from importlib.machinery import PathFinder, SourceFileLoader, ModuleSpec
 from importlib.abc import MetaPathFinder as abc_MetaPathFinder, FileLoader as abc_FileLoader
 from importlib import import_module
@@ -12,13 +12,13 @@ _offset = len(_prefix)
 def _get_ctx_path():
   ctx = get_ctx()
   if ctx is None :
-    return None
-  paths = getattr(ctx, '_ext_paths_cache', None)
-  if paths is not None :
+    return None, None
+  paths = getattr(ctx, '_ext_paths_cache', (None, None))
+  if any(paths_n is not None for paths_n in paths) :
     return paths
   root = ctx.project.labs_path.parent / 'labs_ext'
   if not root.is_dir() :
-    return None
+    return None, None
   paths = [str(root)], [ str(d) for d in root.iterdir() if (d / 'setup.py').is_file() ]
   ctx._ext_paths_cache = paths
   return paths
@@ -58,7 +58,7 @@ class _LabsExtImporter(abc_MetaPathFinder):
       if spec is not None:
         return _patch_spec(fullname, spec) # Correct the module's name.
     
-    # Try importing an packaged version
+    # Try importing a packaged version
 
     installed_name = f'labs_{_name}'
     
@@ -72,7 +72,7 @@ class _LabsExtImporter(abc_MetaPathFinder):
     spec = PathFinder.find_spec(installed_name, None, target)
     if spec is not None :
       return _patch_spec(fullname, spec) # Correct the module's name.
-
+    
     return None
       
 sys.meta_path.append(_LabsExtImporter())
@@ -90,6 +90,4 @@ def __getattr__(k:str):
   return importlib.import_module(_prefix+k)
 
 
-__path__ = []
-    
 

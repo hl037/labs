@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
 cache_variable_re = re.compile(rf'(?P<key>{_id}):(?P<type>{_id})=(?P<value>.*)$')
@@ -30,9 +31,9 @@ def varToCache(name:str, value:str, type:str='INTERNAL', desc:str=None, default_
     if desc :
       res += desc + ' '
     if default_value :
-      res += f'(Default : {default_value}'
+      res += f'(Default : {default_value})'
     res += '\n'
   res += f'{name}:{type}={value}'
   return res
-  
+
 

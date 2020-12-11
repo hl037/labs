@@ -12,6 +12,8 @@ from .utils import Dict
 from . import ninja
 from . import cmake
 from .utils import Graph
+from .core import *
+from .options import STRING, INT, FLOAT, BOOL, PATH, FILEPATH, DeclaredOption, LazyOptions
 
 explicit = ninja.explicit
 implicit = ninja.implicit
@@ -27,16 +29,18 @@ class RuleNameConflictError(RuntimeError):
 class VariablesNotInProjectError(RuntimeError):
   pass
 
+
 class Rule(ninja.Rule):
-  def __init__(self, project, name, **kwargs):
-    super().__init__(name, **kwargs)
-    self.project = project
-    self.implicit_deps = ninja.Target()
+  def __init__(self, project, name, rule_variables={}, **kwargs):
+    kwargs.update(rule_variables)
+    super().__init__(name, rule_variables=kwargs)
+    object.__setattr__(self, 'project', project)
+    object.__setattr__(self, 'implicit_deps', ninja.Target()) # Permit to add programs / files used by the rule automatically as implicit dep of the build
 
   def build(self, **kwargs):
-    r = super().build(**kwargs)
-    self.project << r
-    return r
+    b = super().build(**kwargs)
+    self.project << b
+    return b
 
   def add_implicit_dep(self, o):
     self.implicit_deps |= o
@@ -51,21 +55,38 @@ class Rule(ninja.Rule):
   __rrshift__ = __lshift__
 
 
+class _DefaultSpecialProgramHandler(object):
+  builtin = {'cd'}
+
+  def __call__(self, project, k):
+    if k in self.builtin :
+      p = Program(project, k, ...)
+      p.inject_dep = lambda r:None
+      return p
+    return None
+
+
 class Program(object):
   """
   Represent an executable
   """
   
+  special_programs_handlers = [_DefaultSpecialProgramHandler()]
+
 
   def __init__(self, project, name:str, path:Path=None):
     self.project = project
     self.name = name
-    self.path = path
+    self._path = path
 
   @property
   def is_found(self):
     return self.path is not None
-  
+
+  @property
+  def path(self):
+    return self._path if self._path != ... else self.name
+
   def exec(self, *args, input=None, capture=True, **kwargs):
     """
     Simple wrapper around run.
@@ -121,7 +142,7 @@ class Program(object):
       args = args[0]
     return subprocess.Popen([str(self.path), *args], **kwargs)
 
-  def rule(self, *args, name=None, **kwargs):
+  def rule(self, *args, name=None, rule_variables={}, **kwargs):
     """
     Make a rule from the program. This has the same synthax as run or popen, but accepts ninja variables as argument too.
     However, all arguments will be shell-escaped. Thus, to use file redirection or pipes, you need to create a rule from scratch
@@ -131,17 +152,18 @@ class Program(object):
       raise ProgramNotFoundError()
     if name is None :
       name = self.name
+    if name in self.project.rules :
+      raise ValueError(f'Un rule named {name} already exists in this project')
     if len(args) == 1 and not isinstance(args[0], str) :
       args = list(args[0])
     #kwargs['command'] = shlex.join(chain((str(self.path),), args))
+    kwargs.update(rule_variables)
     if 'command' not in kwargs :
-      kwargs['command'] =' '.join(
-        chain(
-          (shlex.quote(str(self.path)),),
-          (str(a) if isinstance(a, ninja.Variable) else shlex.quote(a) for a in args)
-        )
-      )
-    return self >> self.project.Rule(name, **kwargs)
+      kwargs['command'] = ninja.quote_arg_list(str(self.path), *args)
+    else:
+      assert len(args) == 0
+    r = self >> self.project.Rule(name, rule_variables=kwargs)
+    return r
   
   def variable(self, name=None):
     if name is None :
@@ -151,9 +173,12 @@ class Program(object):
       return v
     return self.project.Variable(name, str(self.path))
 
+  def inject_dep(self, r:Rule):
+    r.add_implicit_dep(self.path.resolve())
+
   def __rshift__(self, o):
     if isinstance(o, Rule) :
-      o.add_implicit_dep(self.path.resolve())
+      self.inject_dep(o)
       return o
     return NotImplemented
   __rlshift__ = __rshift__
@@ -174,6 +199,9 @@ class _VariableProxy(object):
 
   def __setattr__(self, k, v):
     self._parent.variables[k] = str(value)
+
+  def __contains__(self, k):
+    return k in self._parent.variables
 
 class _VariableProject(ninja.Variable):
   def __init__(self, name, val_cb):
@@ -197,16 +225,20 @@ class Project(object):
     self.rules = dict()
     self.build_rules = dict()
     self.build_rules_flat = []
+    self.nodes = []
     self.variables = Dict()
     self.v = _VariableProxy(self)
     self.config = Dict(config)
     self.declared_options = Dict()
+    self.found_programs = dict()
     self.labs_path = labs_path
     self.src_dir = src_dir
     self.build_dir = build_dir
     self._v_src = _VariableProject('src_dir', lambda : str(self.src_dir))
     self._v_build = _VariableProject('build_dir', lambda : str(self.build_dir))
     self._v_labs = _VariableProject('labs_path', lambda : str(self.labs_path))
+    self._unique_build_dir_number = 0
+    self.frozen = False
 
   def Rule(self, name, **kwargs):
     return Rule(self, name, **kwargs)
@@ -220,10 +252,16 @@ class Project(object):
     return v
 
   def find_program(self, name, names=None):
+    res = self.found_programs.get(name, None)
+    if res :
+      return res
     if names is None :
       names = (name,)
     elif isinstance(names, str) :
       names = (names,)
+    res = next(( p for n in names for h in Program.special_programs_handlers if (p := h(self, n)) is not None ), None)
+    if res is not None :
+      return res
     for n in names :
       if isinstance(n, Path) :
         n = str(n)
@@ -231,7 +269,23 @@ class Project(object):
       if path is not None :
         path = Path(path).resolve()
         break
-    return self.Program(name, path)
+    res = self.Program(name, path)
+    self.found_programs[name] = res
+    return res
+
+  def unique_build_dir(self):
+    res = build_dir / f'_unique_build_dir-{self._unique_build_dir_number:05d}' # type: Path
+    res.mkdir(parents=True, exist_ok=True)
+    return res
+
+  def declare_option(self, name, type=STRING, default_value='', description=''):
+    if (d := self.declared_options.get(name)) is None :
+      d = DeclaredOption(name=name, type=type, default_value=default_value, description=description, project=self)
+      if name not in self.config :
+        self.config[name] = type.as_str(default_value)
+      self.declared_options[name] = d
+    return d
+        
 
   @property
   def v_labs(self):
@@ -263,6 +317,9 @@ class Project(object):
       s.add(b)
     self.build_rules_flat.append(b)
 
+  def add_node(self, o:Node):
+    self.nodes.append(o)
+
   def add_variable(self, v):
     self.variables[v.name] = v
   
@@ -272,13 +329,22 @@ class Project(object):
       return self
     
     if isinstance(o, ninja.Variable) :
-      self.add_variable
+      self.add_variable(o)
       return self
+
+    if isinstance(o, Node) :
+      self.add_node(o)
       
     return NotImplemented
 
   __rrshift__ = __lshift__
   add = __lshift__
+
+  def freeze(self):
+    if self.frozen :
+      return
+    for n in self.nodes :
+      n.process()
 
   @property
   def ninja_preamble(self):
@@ -303,46 +369,47 @@ class Project(object):
 
 '''
   ninja_sep_before_rules = '''
-
 ##############################
 ########### Rules  ###########
 ##############################
 
 '''
   ninja_sep_before_builds = '''
-
 ##############################
 ########### Builds ###########
 ##############################
 
 '''
   ninja_end = '''
-
 ##############################
 ########## The End  ##########
 ##############################
 
 '''
   def writeNinja(self, f):
+    self.freeze()
     f.write(self.ninja_preamble)
     f.write(self.ninja_sep_before_variables)
     sorted_vars = Graph(self.variables.values(), _varDep).topologicalSort(False)
     if len(sorted_vars) != len(self.variables) :
       raise VariablesNotInProjectError('Some variables have not been created in the project')
+    v = None
     for v in sorted_vars :
       f.write(v.toNinja())
+      f.write('\n')
+    if v is not None :
       f.write('\n')
     f.write(self.ninja_sep_before_rules)
     for r in self.rules.values() :
       f.write(r.toNinja())
-      f.write('\n')
+      f.write('\n\n')
     f.write(self.ninja_sep_before_builds)
     for b in self.build_rules_flat :
       other_dep = getattr(b.rule, 'implicit_deps', None)
       if other_dep :
         implicit(other_dep) >> b
       f.write(b.toNinja())
-      f.write('\n')
+      f.write('\n\n')
     f.write(self.ninja_end)
   
   @property
@@ -390,6 +457,7 @@ class Project(object):
 
 '''
   def writeCache(self, f):
+    self.freeze()
     conf = Dict(self.config)
     f.write(self.cache_preamble)
     f.write(self.cache_sep_before_user_declared)
@@ -397,7 +465,7 @@ class Project(object):
     for k in keys :
       c = conf.pop(k)
       dc = self.declared_options[k]
-      f.write(cmake.varToCache(k, c, dc.type, dc.desc, dc.default_value))
+      f.write(cmake.varToCache(k, c, dc.type, dc.description, dc.default_value))
       f.write('\n\n')
     f.write(self.cache_sep_before_internal)
     for c in (self.v_labs, self.v_src, self.v_build) :
@@ -422,8 +490,22 @@ class LabsContext(object):
     self.labs = labs
     self.project = labs.project
 
-  def glob(self, patern):
-    return self.project.src_dir.glob(pattern)
+  def glob(self, pattern, conf={}):
+    res = self.FileSet(*self.project.src_dir.glob(pattern), conf=conf, cwd=Path(), as_is=True)
+    res.cwd = self.project.src_dir
+    return res
+  
+  def FileSet(self, *args, cwd=None, as_is=False, **kwargs):
+    if cwd is None :
+      _cwd = self.project.src_dir
+    else:
+      _cwd = cwd
+    if as_is :
+      res = FileSet(*args, **kwargs, cwd=Path())
+      res.cwd = _cwd
+      return res
+    else:
+      return FileSet(*args, **kwargs, cwd=_cwd)
 
   def getContext(self):
     return {
@@ -433,12 +515,15 @@ class LabsContext(object):
       'Rule' : self.project.Rule,
       'Program' : self.project.Program,
       'Variable' : self.project.Variable,
+      'FileSet' : self.FileSet,
       'find_program' : self.project.find_program,
       'add' : self.project.add,
       
       'config' : self.project.config,
-      'src' : self.project.src_dir,
-      'build' : self.project.build_dir,
+      'declare_option' : self.project.declare_option,
+      'src_dir' : self.project.src_dir,
+      'build_dir' : self.project.build_dir,
+      'unique_build_dir' : self.project.unique_build_dir,
       'labs_file' : self.project.labs_path,
       'v_labs' : self.project.v_labs,
       'v_src' : self.project.v_src,
@@ -464,11 +549,17 @@ class LabsContext(object):
       'v_restat' : ninja.v_restat,
       'v_rspfile' : ninja.v_rspfile,
       'v_rspfile_content' : ninja.v_rspfile_content,
+
+      'STRING' : STRING,
+      'INT' : INT,
+      'FLOAT' : FLOAT,
+      'BOOL' : BOOL,
+      'PATH' : PATH,
+      'FILEPATH' : FILEPATH,
     }
 
 
 
-DeclaredOption = namedtuple('DeclaredOption', ['name', 'type', 'default_value', 'description'])
 
 class Labs(object):
   default_labs_filename = 'labs_build.py'

@@ -58,7 +58,4 @@ def dict2Graph(d:dict) -> Graph:
   return Graph(d.keys(), d.__getitem__)
       
 
-      
-
-
 

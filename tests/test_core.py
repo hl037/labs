@@ -324,12 +324,12 @@ class TestFileSet:
     fs = FileSet('/etc/t1')
     assert fs.paths is fs.set
 
-  def test_sorted(self):
+  def test_str_sorted(self):
     fs = FileSet()
-    assert fs.sorted() is fs.list
+    assert [] == list(fs.str_sorted())
 
-    fs = FileSet('/etc/t1')
-    assert fs.sorted() is fs.list
+    fs = FileSet('/etc/t2', '/etc/t1')
+    assert ['/etc/t2', '/etc/t1'] == list(fs.str_sorted())
 
 
     

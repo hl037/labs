@@ -47,3 +47,5 @@ def test_simple(check_labs, mock_shutil):
 def test_ext(check_labs, mock_shutil):
   check_labs()
   
+def test_install(check_labs, mock_shutil):
+  check_labs()

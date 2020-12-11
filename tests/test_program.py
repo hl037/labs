@@ -196,34 +196,34 @@ class TestProgram:
     m_rule, m_popen, r_rule, r_popen = mock_subprocess
     
     r = prog.rule()
-    assert r.v.command == 'echo'
-    assert r.name == 'echo_cmd'
+    assert 'echo' == str(r.command.value)
+    assert 'echo_cmd' == r.name
     
-    r = prog.rule('test')
-    assert r.v.command == 'echo test'
-    assert r.name == 'echo_cmd'
+    r = prog.rule('test', name='echo1')
+    assert 'echo$ test' == str(r.command.value)
+    assert 'echo1' == r.name
     
-    r = prog.rule(('test1', 'test2 etc'))
-    assert r.v.command == "echo test1 'test2 etc'"
-    assert r.name == 'echo_cmd'
+    r = prog.rule(('test1', 'test2 etc'), name='echo2')
+    assert "echo$ test1$ 'test2$ etc'" == str(r.command.value)
+    assert 'echo2' == r.name
     
-    r = prog.rule('test1', 'test2 etc')
-    assert r.v.command == "echo test1 'test2 etc'"
-    assert r.name == 'echo_cmd'
+    r = prog.rule('test1', 'test2 etc', name='echo3')
+    assert "echo$ test1$ 'test2$ etc'" == str(r.command.value)
+    assert 'echo3' == r.name
     
-    r = prog.rule(('test1', 'test2 etc'), kw='42')
-    assert r.v.command == "echo test1 'test2 etc'"
-    assert r.v.kw == '42'
-    assert r.name == 'echo_cmd'
+    r = prog.rule(('test1', 'test2 etc'), kw='42', name='echo4')
+    assert "echo$ test1$ 'test2$ etc'" == str(r.command.value)
+    assert '42' == str(r.kw.value)
+    assert 'echo4' == r.name
     
-    r = prog.rule('test1', 'test2 etc', kw='42')
-    assert r.v.command == "echo test1 'test2 etc'"
-    assert r.v.kw == '42'
-    assert r.name == 'echo_cmd'
+    r = prog.rule('test1', 'test2 etc', kw='42', name='echo5')
+    assert "echo$ test1$ 'test2$ etc'" == str(r.command.value)
+    assert '42' == str(r.kw.value)
+    assert 'echo5' == r.name
     
-    r = prog.rule('test1', 'test2 etc', kw='42', name="echo_cmd_2")
-    assert r.v.command == "echo test1 'test2 etc'"
-    assert r.v.kw == '42'
-    assert r.name == 'echo_cmd_2'
+    r = prog.rule('test1', 'test2 etc', kw='42', name="echo6")
+    assert "echo$ test1$ 'test2$ etc'" == str(r.command.value)
+    assert '42' == str(r.kw.value)
+    assert 'echo6' == r.name
 
     

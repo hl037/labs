@@ -24,7 +24,7 @@ if sys.version_info < (3,):
 
 setup(
     name='labs-build',
-    version='0.1.dev0',
+    version='0.1.dev1',
     description='',
     long_description=LONG_DESC,
     long_description_content_type='text/markdown',

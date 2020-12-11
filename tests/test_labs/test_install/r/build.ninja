@@ -1,0 +1,83 @@
+
+##############################
+########## Preamble ##########
+##############################
+
+# This is an auto generated file by Labs (Language Agnostic Build System).
+# Any modification to this file will be overwriten by subsequent call to Labs.
+# The file was generated from ../t/labs_build.py
+# for the source directory ../t
+# in the build directory ..
+
+################################################################################
+
+
+##############################
+######### Variables  #########
+##############################
+
+DEST = ../rt
+PREFIX = .
+BIN = usr/bin
+LIB = usr/lib
+INCLUDE = usr/include
+ETC = etc
+DATA = usr/share
+ROOT = .
+
+
+##############################
+########### Rules  ###########
+##############################
+
+rule install_gather
+  command = /usr/bin/install$ ${mode}$ ${user}$ ${group}$ ${in}$ ${dest}
+
+rule install_mkdir
+  command = /usr/bin/install$ ${mode}$ ${user}$ ${group}$ -d$ ${out}
+
+rule install_recursive
+  command = __out=`/usr/bin/readlink$ -m$ ${out}`$ &&$ cd$ ${in}$ &&$ /usr/bin/find$ .$ '('$ -type$ d$ -exec$ /usr/bin/install$ ${mode}$ ${user}$ ${group}$ -d$ $$__out/{}$ ';'$ ')'$ -o$ '('$ -type$ f$ -exec$ /usr/bin/install$ ${mode}$ ${user}$ ${group}$ '{}'$ $$__out/{}$ ';'$ ')'
+
+
+##############################
+########### Builds ###########
+##############################
+
+build  | ${DEST}/${PREFIX}/${DATA}/TEST/t1 : install_gather ../t/t1 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${DATA}/TEST
+
+build  | ${DEST}/${PREFIX}/${ROOT}/res/gather/t1 ${DEST}/${PREFIX}/${ROOT}/res/gather/t2 ${DEST}/${PREFIX}/${ROOT}/res/gather/t3 ${DEST}/${PREFIX}/${ROOT}/res/gather/t4 ${DEST}/${PREFIX}/${ROOT}/res/gather/t5 : install_gather ../t/nonrec/t3 ../t/rec/sub/t5 ../t/rec/t4 ../t/t1 ../t/t2 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${ROOT}/res/gather
+
+build  | ${DEST}/${PREFIX}/${ROOT}/res/replicate/t1 ${DEST}/${PREFIX}/${ROOT}/res/replicate/t2 : install_gather ../t/../t/t1 ../t/../t/t2 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${ROOT}/res/replicate
+
+build  | ${DEST}/${PREFIX}/${ROOT}/res/replicate/nonrec/t3 : install_gather ../t/../t/nonrec/t3 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${ROOT}/res/replicate/nonrec
+
+build  | ${DEST}/${PREFIX}/${ROOT}/res/replicate/rec/t4 : install_gather ../t/../t/rec/t4 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${ROOT}/res/replicate/rec
+
+build  | ${DEST}/${PREFIX}/${ROOT}/res/replicate/rec/sub/t5 : install_gather ../t/../t/rec/sub/t5 | /usr/bin/install
+  mode = -m$ 755
+  dest = ${DEST}/${PREFIX}/${ROOT}/res/replicate/rec/sub
+
+build ${DEST}/${PREFIX}/${ROOT}/mk/dir1/dir2 ${DEST}/${PREFIX}/${ROOT}/mk/dir3 ${DEST}/${PREFIX}/${ROOT}/mk/dir4 ${DEST}/${PREFIX}/${ROOT}/mk/dir4/dir5 : install_mkdir  | /usr/bin/install
+  mode = -m$ 755
+
+build ${DEST}/${PREFIX}/${ROOT}/res/rec : install_recursive ../t/rec | /usr/bin/find /usr/bin/install
+  group = -g$ root
+  user = -o$ root
+  mode = -m$ 777
+
+
+##############################
+########## The End  ##########
+##############################
+

@@ -1,0 +1,72 @@
+
+##############################
+########## Preamble ##########
+##############################
+
+# This is an auto generated file by Labs (Language Agnostic Build System).
+#
+# The file was generated from ../t/labs_build.py
+# for the source directory ../t
+# in the build directory .
+#
+# You should modify it to change build options.
+# When running Labs again, a new cache will be generated considering the values of the previous.
+# The sythax is the same as CMake's CMakeCache.txt :
+# KEY:TYPE=VALUE
+# KEY is the name of a variable in the cache.
+# TYPE is a hint to GUI's for the type of VALUE, DO NOT EDIT TYPE!.
+# VALUE is the current value for the KEY.
+
+################################################################################
+
+
+##############################
+#### Configurable entries ####
+##############################
+
+//Binaries location (will be installed at self.DEST / self.PREFIX / self.BIN) (Default : usr/bin)
+BIN:PATH=usr/bin
+
+//data location (will be installed at self.DEST / self.PREFIX / self.DATA) (Default : usr/share)
+DATA:PATH=usr/share
+
+//Destination path of the installed file (can be used by package script to set the place where the file should be actually copied).This can always been override whan calling ninja. (Default : ../rt)
+DEST:PATH=../rt
+
+//Editable text configurations location (will be installed at self.DEST / self.PREFIX / self.DATA) (Default : etc)
+ETC:PATH=etc
+
+//Headerlocation (will be installed at self.DEST / self.PREFIX / self.INCLUDE) (Default : usr/include)
+INCLUDE:PATH=usr/include
+
+//Libraries location (will be installed at self.DEST / self.PREFIX / self.LIB) (Default : usr/lib)
+LIB:PATH=usr/lib
+
+//Prefix to the file system (example : home/user/.local). Will prefix all other paths (bin, usr/share, etc.) (Default : .)
+PREFIX:PATH=.
+
+//Root filesystem directory. You should normally not use it. (Default : .)
+ROOT:PATH=.
+
+
+
+##############################
+###### Internal entries ######
+##############################
+
+__LABS_ABSPATH:INTERNAL=0
+
+__LABS_RELPATH:INTERNAL=1
+
+labs_path:INTERNAL=../t/labs_build.py
+
+src_dir:INTERNAL=../t
+
+build_dir:INTERNAL=.
+
+
+
+##############################
+########## The End  ##########
+##############################
+

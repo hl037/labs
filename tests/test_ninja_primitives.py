@@ -12,29 +12,29 @@ class TestTarget:
     t = Target()
     self.assertSame(t, [])
     t = Target(Path('/etc/t1'))
-    self.assertSame(t, [Path('/etc/t1')])
+    self.assertSame(t, [Expr('/etc/t1')])
     t = Target('/etc/t1')
-    self.assertSame(t, [Path('/etc/t1')])
+    self.assertSame(t, [Expr('/etc/t1')])
     t = Target('/etc/t1', Path('/etc/t2'))
-    self.assertSame(t, [Path('/etc/t1'), Path('/etc/t2')])
+    self.assertSame(t, [Expr('/etc/t1'), Expr('/etc/t2')])
     t = Target('/etc/t1', [Path('/etc/t2'), '/etc/t3', '/etc/t4'], '/etc/t4')
-    self.assertSame(t, [Path('/etc/t1'), Path('/etc/t2'), Path('/etc/t3'), Path('/etc/t4')])
+    self.assertSame(t, [Expr('/etc/t1'), Expr('/etc/t2'), Expr('/etc/t3'), Expr('/etc/t4')])
     t2 = Target('/etc/t2', [Path('/etc/t3'), '/etc/t4', '/etc/t5'], '/etc/t5')
     t3 = Target(t, t2)
-    self.assertSame(t3, [Path('/etc/t1'), Path('/etc/t2'), Path('/etc/t3'), Path('/etc/t4'), Path('/etc/t5')])
+    self.assertSame(t3, [Expr('/etc/t1'), Expr('/etc/t2'), Expr('/etc/t3'), Expr('/etc/t4'), Expr('/etc/t5')])
     t2 = Target('/etc/t2', [Path('/etc/t3'), '/etc/t4', '/etc/t5'], '/etc/t5')
 
   def test_operators(self):
     t1 = Target('/etc/t1', '/etc/t2')
     t2 = Target('/etc/t2', '/etc/t3')
     t = t1 | t2
-    self.assertSame(t, [Path('/etc/t1'), Path('/etc/t2'), Path('/etc/t3')])
+    self.assertSame(t, [Expr('/etc/t1'), Expr('/etc/t2'), Expr('/etc/t3')])
     t = t1 & '/etc/t1'
-    self.assertSame(t, [Path('/etc/t1')])
+    self.assertSame(t, [Expr('/etc/t1')])
     t = '/etc/t3' | t1
-    self.assertSame(t, [Path('/etc/t1'), Path('/etc/t2'), Path('/etc/t3')])
+    self.assertSame(t, [Expr('/etc/t1'), Expr('/etc/t2'), Expr('/etc/t3')])
     t2 -= '/etc/t2'
-    self.assertSame(t2, [Path('/etc/t3')])
+    self.assertSame(t2, [Expr('/etc/t3')])
 
   def test_len(self):
     t1 = Target('/etc/t1', '/etc/t2')
@@ -78,8 +78,7 @@ class TestRule:
     
     res = \
 '''rule r
-  command = echo$ test
-  b = test'''
+  command = echo$ test'''
   
     r = Rule('r', command='echo test', b='test')
     assert res == r.toNinja()
@@ -88,11 +87,10 @@ class TestRule:
     
     res = \
 '''rule r
-  command = echo$ test
-  b = test'''
+  command = echo$ test'''
   
     r = Rule('r', command='echo test', b='te')
-    r.v.b = 'test'
+    r.b = 'test'
     assert res == r.toNinja()
 
   def test_cmd_raise(self):
@@ -106,7 +104,7 @@ class TestBuild:
 '''build out1 | out_imp1 : r in1 | in_imp1 || in_oo1
   imp_out = out_imp1'''
     
-    r = Rule('r', command='touch '+v_out+' '+VariableRule('imp_out'))
+    r = Rule('r', command='touch '+v_out+' '+V('imp_out'))
 
     b = implicit('out_imp1') << Target('out1') << r.build(imp_out='out_imp1') << explicit("in1") << implicit('in_imp1') << order_only('in_oo1')
 
@@ -118,7 +116,7 @@ class TestBuild:
 '''build out1 | out_imp1 : r in1 | in_imp1 || in_oo1
   imp_out = out_imp1'''
     
-    r = Rule('r', command='touch '+v_out+' '+VariableRule('imp_out'))
+    r = Rule('r', command='touch '+v_out+' '+V('imp_out'))
 
     
     b = order_only('in_oo1') >> implicit('in_imp1') >> explicit("in1") >> r.build(imp_out='out_imp1') >> Target('out1') >> implicit('out_imp1')
