@@ -413,11 +413,11 @@ class Rule():
     return res
 
 
-def explicit(*args):
+def explicit(*args) -> QualifiedTarget:
   return QualifiedTarget(explicit=Target(*args))
-def implicit(*args):
+def implicit(*args) -> QualifiedTarget:
   return QualifiedTarget(implicit=Target(*args))
-def order_only(*args):
+def order_only(*args) -> QualifiedTarget:
   return QualifiedTarget(order_only=Target(*args))
 
 def escape(s):

@@ -76,6 +76,9 @@ class FileSet(ninja.Target):
   """
   Set of input files
   """
+  list : list[Path]
+  set : set[Path]
+
   def __init__(self, *args, conf:Dict=None, import_conf=True, cwd=Path()):
     if len(args) == 1 :
       a, = args
@@ -110,7 +113,7 @@ class FileSet(ninja.Target):
     elif isinstance(oth, FileSet) :
       self.conf |= oth.conf
     for a in oth :
-      p = self.cwd / a
+      p = self.cwd / a # if a is absolute, result will be a
       if p not in self.set :
         self.set.add(p)
         self.list.append(p)

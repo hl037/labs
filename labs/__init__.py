@@ -238,6 +238,7 @@ class Project(object):
     self._v_build = _VariableProject('build_dir', lambda : str(self.build_dir))
     self._v_labs = _VariableProject('labs_path', lambda : str(self.labs_path))
     self._unique_build_dir_number = 0
+    self._unique_id_number = 0
     self.frozen = False
 
   def Rule(self, name, **kwargs):
@@ -275,7 +276,13 @@ class Project(object):
 
   def unique_build_dir(self):
     res = build_dir / f'_unique_build_dir-{self._unique_build_dir_number:05d}' # type: Path
+    self._unique_build_dir_number += 1
     res.mkdir(parents=True, exist_ok=True)
+    return res
+
+  def unique_id(self):
+    res = str(self._unique_id_number)
+    self._unique_id_number += 1
     return res
 
   def declare_option(self, name, type=STRING, default_value='', description=''):

@@ -46,7 +46,7 @@ The project is still at a draft step : Only the low-level api is developped yet,
     - [ ] Understand common C/CXX env variables
     - [ ] Handle include paths
     - [ ] Unified library object (providing compile flags, include paths, library links etc.)
-  - [ ] auto\_build function to compile with the right compiler automatically regarding the file ype.
+  - [ ] auto\_build function to compile with the right compiler automatically regarding the file type.
   - [ ] sub project
   - [ ] find\_lib
     - [ ] using pkg_config
