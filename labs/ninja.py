@@ -5,6 +5,8 @@ from .utils import Dict
 import shlex
 from collections import namedtuple
 from typing import Callable
+from functools import partial
+from typing import Union
 
 
 def _defOps(a, loc):
@@ -77,6 +79,9 @@ class Target(object):
       
 del _defOps
 
+class IncompatibleExprContext(RuntimeError):
+  pass
+
 class Expr(object):
   """
   Represents a string with reference to a variable
@@ -85,36 +90,69 @@ class Expr(object):
     if isinstance(v, self.__class__) :
       self.value = v.value
       self._str = v._str
+      self.context = None
     elif isinstance(v, Path) :
       self.value = [str(v)]
       self._recompute_str()
+      self.context = None
     elif isinstance(v, (str, Variable)) :
       self.value = [v]
+      if isinstance(v, VariableRule) :
+        self.context = v.rule
+      elif isinstance(v, VariableBuild) :
+        self.context = v.build
+      else :
+        self.context = None
       self._recompute_str()
     else:
       raise ValueError('Expr() accepts only other exprs, str, or Variable')
       self.value = None
       self._str = None
+      self.context = None
 
   @classmethod
   def is_compatible(cls, obj):
     return isinstance(obj, (Expr, Variable, Path, str))
 
+  @classmethod
+  def getContext(cls, o1, o2):
+    # Sort in inheritance order
+    if ((isinstance(o2, VariableBuild) and not isinstance(o1, VariableBuild)) or 
+        (isinstance(o2, VariableRule) and o1 is None)):
+      o1, o2 = o2, o1
+    if isinstance(o1, VariableRule) :
+      if o2 is None :
+        if isinstance(o1, VariableBuild) :
+          return o1.build
+        return o1.rule
+      if o1.rule is not o2.rule :
+        raise IncompatibleExprContext(f'Between {o1.rule} and {o2.rule}')
+      if isinstance(o1, VariableBuild) :
+        if not isinstance(o2, VariableBuild) :
+          return o1.build
+        if o1.build is not o2.build :
+          raise IncompatibleExprContext(f'Between {o1.build} and {o2.build})')
+        return o1.build
+      return o1.rule
+        
   def __add__(self, other):
     e = self.__class__(other)
     e.value = self.value + e.value
+    e.context = self.getContext(self, other)
     e._recompute_str()
     return e
     
   def __radd__(self, other):
     e = self.__class__(other)
     e.value = e.value + self.value
+    e.context = self.getContext(self, other)
     e._recompute_str()
     return e
     
   def __iadd__(self, other):
     e = self.__class__(other)
     self.value += e.value
+    e.context = self.getContext(self, other)
     self._recompute_str()
     return self
 
@@ -127,10 +165,10 @@ class Expr(object):
   def __eq__(self, oth):
     if not isinstance(oth, self.__class__) :
       return NotImplemented
-    return self._str == oth._str
+    return self._str == oth._str and self.context is oth.context
 
   def __hash__(self):
-    return hash(self._str)
+    return hash((self._str, self.context))
 
   def __lt__(self, oth):
     if not isinstance(oth, self.__class__) :
@@ -161,6 +199,24 @@ class Variable(object):
 class VariableBuiltin(Variable):
   def toNinja(self):
     raise NotImplementedError()
+
+class VariableRule(Variable):
+  """
+  A top level variable scoped to a rule
+  """
+  def __init__(self, rule:'Rule', name:str, value:str=''):
+    super().__init__(name=f'_Rule_{rule.name}_var_{name}_', value=value)
+    self._name = name
+    self.rule = rule
+
+class VariableBuild(VariableRule):
+  """
+  A build variable
+  """
+  def __init__(self, build:'Build', name:str, value:str=''):
+    super().__init__(build.rule,name, value)
+    self.build = build
+  
 
 class BuildTarget(object):
   """
@@ -261,6 +317,9 @@ class VariableDict(dict):
   """
   Helper class that keeps attributes outside the dict
   """
+
+  def __self__(self, VariableClass = Variable):
+    self._VariableClass_ = Variable
   
   def __setattr__(self, k, val):
     if k in self.__dict__ :
@@ -272,7 +331,7 @@ class VariableDict(dict):
     return self[k]
 
   def __missing__(self, k):
-    v = VariableBuiltin(k, '')
+    v = self._VariableClass_(k, '')
     self[k] = v
     return v
 
@@ -352,8 +411,8 @@ class Rule():
   def __init__(self, name, rule_variables={}, **kwargs):
     kwargs.update(rule_variables)
     object.__setattr__(self, 'name', name)
-    object.__setattr__(self, '_v', VariableDict())
-    object.__setattr__(self, '_b', VariableDict())
+    object.__setattr__(self, '_v', VariableDict(partial(VariableRule, self)))
+    object.__setattr__(self, '_b', VariableDict(VariableBuiltin))
     for k, v in kwargs.items() :
       if isinstance(v, Expr) :
         v.value = [ (x.create_from(self) if isinstance(x, FutureVariable) else x) for x in v.value ]
@@ -368,15 +427,25 @@ class Rule():
   def toNinja(self):
     if 'command' not in self._b :
       raise RuntimeError(f"Missing the required 'command' variable in the rule {self.name} : {repr(self)}")
-    variables = ''.join(f'\n  {k} = {str(Expr(v.value))}' for (k, v) in self._b.items())
-    return f'rule {self.name}{variables}'
+    variables_rule = '\n'.join(f'{k} = {str(Expr(v.value))}' for (k, v) in self._v.items())
+    variables_builtin = '\n  '.join(f'{k} = {str(Expr(v.value))}' for (k, v) in self._b.items())
+    return (
+      f'{variables_rule}\n'
+      f'rule {self.name}\n'
+      f'  {variables_builtin}'
+    )
 
   def build(self, **kwargs):
     return self.Build(self, **kwargs)
 
   def __repr__(self):
-    variables = ''.join(f'\n  {k} = {str(Expr(v.value))}' for (k, v) in self.items())
-    return f'rule {self.name}{variables}'
+    variables_rule = '\n'.join(f'{k} = {str(Expr(v.value))}' for (k, v) in self._v.items())
+    variables_builtin = '\n  '.join(f'{k} = {str(Expr(v.value))}' for (k, v) in self._b.items())
+    return (
+      f'{variables_rule}\n'
+      f'rule {self.name}\n'
+      f'  {variables_builtin}'
+    )
 
   def __getattr__(self, k) -> VariableProxy:
     return self[k]
