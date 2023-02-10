@@ -27,12 +27,12 @@ class STRING(DeclaredOptionType):
   as_val = str
 
 class INT(DeclaredOptionType):
-  cache_name = 'STRING'
+  cache_name = 'INT'
   as_str = str
   as_val = int
   
 class FLOAT(DeclaredOptionType):
-  cache_name = 'STRING'
+  cache_name = 'FLOAT'
   as_str = str
   as_val = float
     

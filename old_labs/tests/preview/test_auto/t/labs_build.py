@@ -1,3 +1,23 @@
+
+# 
+
+
+
+
+from labs.ext.esp8266 import NodeMCUv3 as TC
+
+tc = TC()
+
+lib = tc.build("lib/truc/*", 
+tc.build(glob("src/*"))
+tc.
+
+
+
+
+
+
+# old
 from functools import cached_property
 
 
