@@ -1,29 +1,25 @@
+#TODO : UT
 
-from labs.runtime import get_ctx
 from importlib.machinery import PathFinder, SourceFileLoader, ModuleSpec
 from importlib.abc import MetaPathFinder as abc_MetaPathFinder, FileLoader as abc_FileLoader
 from importlib import import_module
 from pathlib import Path
 import sys
 
+import labs
+
 _prefix = 'labs.ext.'
 _offset = len(_prefix)
 
-def _get_ctx_path():
-  ctx = get_ctx()
-  if ctx is None :
-    return None, None
-  paths = getattr(ctx, '_ext_paths_cache', (None, None))
-  if any(paths_n is not None for paths_n in paths) :
-    return paths
-  root = ctx.project.labs_path.parent / 'labs_ext'
+def initExt(build: labs.LabsBuild):
+  """
+  Returns two lists : First, a list of paths for raw extensions, second, a list of path for extension package
+  """
+  root = build._internal.labs_path.parent / 'labs_ext'
   if not root.is_dir() :
-    return None, None
-  paths = [str(root)], [ str(d) for d in root.iterdir() if (d / 'setup.py').is_file() ]
-  ctx._ext_paths_cache = paths
-  return paths
-
-
+    build._internal.ext_paths = None, None
+  else :
+    build._internal.ext_paths = [str(root)], [ str(d) for d in root.iterdir() if (d / 'setup.py').is_file() ]
 
 def _patch_spec(fullname, spec:ModuleSpec): #loader_class, fullname, path, smsl, target):
     spec.name = fullname
@@ -52,7 +48,7 @@ class _LabsExtImporter(abc_MetaPathFinder):
 
     # Try importing non packaged version
 
-    paths_1, paths_2 = _get_ctx_path()
+    paths_1, paths_2 = labs.build._internal.ext_paths
     if paths_1 :
       spec = PathFinder.find_spec(fullname, paths_1, target)
       if spec is not None:
@@ -88,6 +84,4 @@ def __getattr__(k:str):
     raise AttributeError(k)
   import importlib
   return importlib.import_module(_prefix+k)
-
-
 

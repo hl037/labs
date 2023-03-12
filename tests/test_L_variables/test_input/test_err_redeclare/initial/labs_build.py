@@ -1,5 +1,4 @@
 from labs import *
-from labs import VariableRedeclaredError
 import pytest
 
 build.IN_STRING = LVariable.I("Test", STRING, doc="String variable")

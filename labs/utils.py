@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from collections import deque, defaultdict
 from addict import Dict
+from pathlib import Path
 
 class DefaultDict(defaultdict):
   def __missing__(self, key):
@@ -56,6 +59,17 @@ class Graph(object):
   
 def dict2Graph(d:dict) -> Graph:
   return Graph(d.keys(), d.__getitem__)
-      
+
+def relativeTo(from_:Path, to:Path):
+  from_ = from_.absolute()
+  to = to.absolute()
+  f_parts = from_.parts
+  t_parts = to.parts
+  common_root_len = 0
+  for f, t in zip(f_parts, t_parts) :
+    if f != t :
+      break
+    common_root_len += 1
+  return Path(*(('../',) * (len(t_parts) - common_root_len)), *f_parts[common_root_len:])
 
 

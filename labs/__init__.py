@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 import os
 import subprocess
@@ -6,38 +7,71 @@ import shutil
 from pathlib import Path
 from itertools import chain
 from collections import namedtuple
+from threading import local as ThreadLocal
+import contextlib
+from typing import TYPE_CHECKING
 
-from .utils import Dict
+from .utils import Dict, relativeTo
+from .translation import tr
 
 from . import cmake
 from .utils import Graph
-from .variables import STRING, INT, FLOAT, BOOL, PATH, FILEPATH
+from .variables import (
+  STRING,
+  NUMBER,
+  BOOL,
+  PATH,
+  FILEPATH,
+  LVariable,
+  LVariableDecl,
+  LVariableDirection,
+  Expr,
+  LVariableAlreadyEvaluatedError,
+  LVariableTypeInferenceError,
+)
 
+if TYPE_CHECKING :
+  from typing import Union
 
-class Project(object):
-  """
-  Root of a build. Each Projects intance corresponds to a ninja file.
-  You should use this class to get any ninja primitives instead of instanciating them yourself.
-  """
+class CacheValueError(ValueError):
+  def __init__(self, original_error:ValueError, variable:LVariable):
+    self.original_error = original_error
+    self.variable = variable
+    super().__init__(tr('Impossible to assign {variable_name} from cache. {reason}').format(variable_name=variable.name, reason=original_error.args[0]))
+    
+
+class VariableRedeclaredError(RuntimeError):
+  def __init__(self, variable:LVariable):
+    self.variable = variable
+    super().__init__(tr('The LVariable {variable_name} has already been declared').format(variable_name=variable.name))
+
 
 class LabsContext(object):
   """
-  Context of a build file. The methods provided in this object are the global-scope functions of the build file.
+  Context of a build file. Provides the locals and globals used in the build, and also takes care to sync the labs.build / labs.ctx thread-local variables
   """
-  def __init__(self, labs:'Labs'):
-    self.labs = labs
-    self.project = labs.project
-    
-  def __init__(self, labs_path:Path, src_dir:Path, build_dir:Path, config=dict()):
-    self.labs_path = labs_path
-    self.src_dir = src_dir
-    self.build_dir = build_dir
-    self.config = Dict(config)
+  def __init__(self, build:'LabsBuild'):
+    self.build = build
+    self.globals = {}
+    self.locals = {}
 
+
+  def __enter__(self):
+    self.parent = thread_local.ctx
+    thread_local.ctx = self
+    os.chdir(self.build._internal.build_path)
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    thread_local.ctx = self.parent
+    if self.parent:
+      os.chdir(self.parent._internal.build_path)
+    self.parent = None
+    
+  # old
   def getContext(self):
     return {
       'sh_esc' : shlex.quote,
-      
       'config' : self.project.config,
       'declare_option' : self.project.declare_option,
       'src_dir' : self.project.src_dir,
@@ -52,68 +86,132 @@ class LabsContext(object):
     }
 
 
+class LabsBuild(object):
+  """
+  Data store of the build. Holds all the variables, objects, etc.
+  """
+
+  #__slots__ = ('_internal',)
+
+  def __init__(self):
+    self._internal = Dict()
+    self._internal.cache = Dict()
+    self._internal.variables = {}
+
+  def __getattr__(self, key:str):
+    print(key)
+    if res := self._internal.variables.get(key) :
+      return res
+    print(key)
+    raise AttributeError(key)
+
+  def __setattr__(self, key:str, val):
+    if key == '_internal' :
+      super().__setattr__('_internal', val)
+    if isinstance(val, LVariableDecl) :
+      if val.err is not None :
+        (err_class, msg), from_err = val.err
+        raise err_class(msg.format(varname=key)) from from_err
+      if existing := self._internal.variables.get(key) :
+        raise VariableRedeclaredError(existing)
+      try :
+        val.default_value = val.type.cast(val.default_value)
+      except TypeError as e:
+        raise TypeError(
+          tr(
+            'Error on assigning the default value to the variable {variable_name}. {reason}'
+          ).format(variable_name=key, reason=e.args[0])
+        ) from e
+        
+      var = val.instanciate(self, key)
+      if var.direction is LVariableDirection.INPUT :
+        cache_expr = self._internal.cache.get(key)
+        if cache_expr :
+          try :
+            var_value = var.type.loads(cache_expr)
+          except ValueError as e:
+            raise CacheValueError(e, var) from e
+          var.value = var_value
+      self._internal.variables[key] = var
+  
+  __setitem__ = __setattr__
+  __getitem__ = __getattr__
 
 
 class Labs(object):
-  default_labs_filename = 'labs_build.py'
-  default_cache_filename = 'labs_cache'
-  default_ninja_build_filename = 'build.ninja'
-
-  absolute_path_key = '__LABS_ABSPATH'
-  relative_path_key = '__LABS_RELPATH'
-
   """
   Main class to parse labs_build.py files.
   This is the backend used by the CLI. You should normally use the CLI to build a project,
   but it may be useful to invoke it from an already running python script.
+
+  This class configures the build object used by the build file, then processes it.
   """
-  def __init__(self, src_path=None, build_path=None, config=dict(), use_cache=True):
+  
+  labs_filename = 'labs_build.py'
+  cache_filename = 'labs_cache'
+  ninja_build_filename = 'build.ninja'
+
+  relative_path_key = 'LABS_RELATIVE_PATHS'
+  src_key = 'LABS_SOURCE_PATH'
+
+  def __init__(self, src_path:Path|str=None, build_path:Path|str=None, config=dict(), use_cache=True):
     """
     @param src_path : sources root path (path of the root directory or the build file). If a directory is passed, it will try src_path/labs_build.py
     @param build_path : build root directory
     @param config : configuration overiding the defaults and the cache.
     """
+    import labs.ext as ext
+    if isinstance(src_path, str) :
+      src_path = Path(src_path)
+    if isinstance(build_path, str) :
+      build_path = Path(build_path)
+    self.build = LabsBuild()
+    build = self.build
     if build_path is None :
-      self.build_path = Path.cwd().resolve()
+      build_path = Path.cwd().resolve()
     else:
-      self.build_path = Path(build_path).resolve()
-    self.override_config = config
-    
-    config = Dict()
+      build_path = Path(build_path).resolve()
     
     if use_cache :
-      cache_path = self.build_path / self.default_cache_filename
+      cache_path = build_path / self.cache_filename
       if cache_path.is_file() :
-        config.update(self.parse_cache(cache_path))
+        build._internal.cache.update(self.parse_cache(cache_path))
+      build._internal.cache.update(config)
 
+    setattr(build, self.relative_path_key, LVariable.I(False, BOOL, doc=tr('Should paths be relatives ?')))
+    relative_paths = getattr(build, self.relative_path_key).value
+
+    if src_path :
+      src_path = src_path.absolute()
+    build._internal.abs_build_path = build_path.absolute()
+    if relative_paths :
+      build._internal.build_path = Path('.')
+      setattr(build, self.src_key, LVariable.I(
+        relativeTo(src_path, build._internal.abs_build_path) if src_path else None,
+        FILEPATH,
+        doc=tr('Source directory path. labs_build.py should be in this directory/')
+      ))
+    else :
+      build._internal.build_path = build._internal.abs_build_path
+      setattr(build, self.src_key, LVariable.I(
+        src_path,
+        FILEPATH,
+        doc=tr('Source directory path. labs_build.py should be in this directory/')
+      ))
+    # From now on, build path is the correct prefix, and everything should be relative to it. src_path points to the parent of labs_build.py.
+      
+    src_path = getattr(build, self.src_key).value
     if src_path is None :
-      src_path = config.get('labs_path', None)
-      if src_path is None :
-        raise ValueError("Cannot guess the source directory path")
+      raise ValueError(tr("Cannot guess the source directory path."))
     
-    config.update(self.override_config)
+    labs_path = src_path / self.labs_filename
+    if not os.access(labs_path, os.R_OK) :
+      raise OSError(tr("labs_build not fount or missing authorisations."))
     
-    self.src_path = Path(src_path).resolve()
-    if self.src_path.is_dir() :
-      self.labs_path = self.src_path/self.default_labs_filename
-    elif self.src_path.is_file() :
-      self.labs_path = self.src_path
-      self.src_path = self.src_path.parent
+    build._internal.src_path = src_path
+    build._internal.labs_path = labs_path
+    ext.initExt(build)
 
-    if not os.access(self.labs_path, os.R_OK) :
-      raise OSError("labs_build not fount or missing authorisations")
-
-    if cmake.str2bool(config.get(self.absolute_path_key, True)) :
-      self.labs_path = self.labs_path.absolute()
-      self.src_path = self.src_path.absolute()
-      self.build_path = self.build_path.absolute()
-    elif cmake.str2bool(config.get(self.relative_path_key, False)) :
-      cwd = Path.cwd().absolute()
-      self.labs_path = Path(os.path.relpath(self.labs_path, cwd))
-      self.src_path = Path(os.path.relpath(self.src_path, cwd))
-      self.build_path = Path(os.path.relpath(self.build_path, cwd))
-
-    self.project = Project(self.labs_path, self.src_path, self.build_path, config)
 
   @classmethod
   def parse_cache(cls, cache_path:Path):
@@ -121,31 +219,48 @@ class Labs(object):
       return cmake.parse_cache(f)
 
   def process(self):
-    import labs.ext as ext
-    import labs.runtime as runtime
-    
-    self.build_path.mkdir(parents=True, exist_ok=True)
-    
-    with self.labs_path.open('rb') as f :
-      labs_src = f.read()
-    labs_code = compile(labs_src, self.labs_path, 'exec')
+      
+    build = self.build
+    build._internal.abs_build_path.mkdir(parents=True, exist_ok=True)
 
-    try:
-      ctx = LabsContext(self)
-      runtime._ctx = ctx
+    with LabsContext(build) as ctx:
+      with build._internal.labs_path.open('rb') as f :
+        labs_src = f.read()
+      labs_code = compile(labs_src, build._internal.labs_path, 'exec')
+      exec(labs_code, ctx.globals, ctx.locals)
+      
+      # with (self.build_path/self.default_ninja_build_filename).open('w') as f :
+      #   self.project.writeNinja(f)
 
-      _locals = dict()
-      exec(labs_code, ctx.getContext(), _locals)
+      # with (self.build_path/self.cache_filename).open('w') as f :
+      #   self.project.writeCache(f)
 
-      with (self.build_path/self.default_ninja_build_filename).open('w') as f :
-        self.project.writeNinja(f)
 
-      with (self.build_path/self.default_cache_filename).open('w') as f :
-        self.project.writeCache(f)
-    finally:
-      ext._clean()
-      runtime._ctx = None
-    
-    
-    
+def __getattr__(key):
+  if key in ('build', 'b') :
+    return thread_local.ctx.build
+  if key == 'ctx' :
+    return thread_local.ctx
+  raise AttributeError(key)
 
+thread_local = ThreadLocal()
+
+thread_local.ctx = None
+
+
+if TYPE_CHECKING :
+  build:LabsBuild = None
+  ctx:LabsBuild = None
+
+__all__ = [
+  'LVariable',
+  'build',
+  'ctx',
+  'BOOL', 'NUMBER', 'STRING', 'PATH', 'FILEPATH',
+  'Expr',
+  'Path',
+  'Dict',
+  'VariableRedeclaredError',
+  'LVariableAlreadyEvaluatedError',
+  'LVariableTypeInferenceError',
+]
