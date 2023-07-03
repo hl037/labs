@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
 import labs
 from pathlib import Path
 
@@ -111,11 +111,11 @@ class PATH(VariableType):
     return Path(s)
   
   @classmethod
-  def dumps(cls, s:str):
-    if not isinstance(s, Path) :
-      raise TypeError(tr('PATH expects a Path. Got {type} (value = {value}).').format(type=type(val).__name__, value=repr(val)))
+  def dumps(cls, p:Path):
+    if not isinstance(p, Path) :
+      raise TypeError(tr('PATH expects a Path. Got {type} (value = {value}).').format(type=type(p).__name__, value=repr(p)))
       # TODO: UT + test ref
-    return s
+    return str(p)
   
   @classmethod
   def cast(cls, value):
@@ -135,11 +135,11 @@ class FILEPATH(VariableType):
     return Path(s)
   
   @classmethod
-  def dumps(cls, s:str):
-    if not isinstance(s, Path) :
-      raise TypeError(tr('FILEPATH expects a Path. Got {type} (value = {value}).').format(type=type(val).__name__, value=repr(val)))
+  def dumps(cls, p:Path):
+    if not isinstance(p, Path) :
+      raise TypeError(tr('FILEPATH expects a Path. Got {type} (value = {value}).').format(type=type(p).__name__, value=repr(p)))
       # TODO: UT + test ref
-    return s
+    return str(p)
   
   @classmethod
   def cast(cls, value):
@@ -182,7 +182,7 @@ class BOOL(VariableType):
         reason=str(e))
       ) from e
 
-class LVariableDirection(Enum):
+class LVariableDirection(IntEnum):
   INPUT = 1
   OUTPUT = 2
   OVERWRITE = 3
@@ -229,10 +229,9 @@ class LVariableDecl(object):
 class LVariable(Variable):
   """
   Variable appearing in the LABS cache.
-  In the cache, the variable is not evaluated, it is written as typed. But it is possible to evaluate it in the labs_build.
-  When a ref to a LVariable is passed part of a NVariable, it is first store as a reference, and at the end of the labs_build (just before generating the ninja file)
-  the ref is evaluated.
   An LVariable can be evaluated only once. after it is evaluated, its value can't change anymore.
+  The cache is the evaluated value. NVariable are passed as ninja reference $(VAR).
+  The self.expanded attribute is the one stored in the cache
   """
   def __init__(self, direction:LVariableDirection, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
     self.name = name
@@ -256,11 +255,12 @@ class LVariable(Variable):
       self.value = self.default_value
     else :
       self._expr = Expr(self._expr)
-      # TODO : check no NVariables
       self._expanded = ''.join(
         (
           self.build[part.name].expanded
-          if isinstance(part, VariableRef) else
+          if isinstance(part, LVariableRef) else
+          part.ninja_ref
+          if isinstance(part, NVariableRef) else
           part
         )
         for part in self._expr.parts
@@ -278,8 +278,6 @@ class LVariable(Variable):
     if self._value is Nil :
       self.evaluate()
     return self._expanded
-  
-      
   
   @value.setter
   def value(self, value):
@@ -322,6 +320,21 @@ class VariableRef(object):
     self.name = var.name
     # TODO add flag LVariable or NVariable etc.
 
+class LVariableRef(VariableRef):
+  """
+  A reference to a LVariable
+  """
+  pass
+
+class NVariableRef(VariableRef):
+  """
+  A reference to a NVariable
+  """
+  @property
+  def ninja_ref(self):
+    return f'$({self.name})'
+    
+
 class Expr(object):
   """
   Expressions for LVariables and NVariables.
@@ -356,6 +369,7 @@ class Expr(object):
   def parseString(self, s:str):
     # TODO
     return s
+
     
   def __str__(self):
     return ''.join(map(str, self.parts))

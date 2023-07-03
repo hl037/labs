@@ -13,3 +13,9 @@ def build():
     print('TTT 2')
   return build
   
+@pytest.fixture
+def expectBuild(expectdir, build):
+  def test():
+    with expectdir(current_dir_replace_string='{{test_dir}}') as e :
+      build(e)
+  return test

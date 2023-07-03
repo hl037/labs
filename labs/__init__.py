@@ -31,7 +31,7 @@ from .variables import (
 )
 
 if TYPE_CHECKING :
-  from typing import Union
+  from typing import Union, IO
 
 class CacheValueError(ValueError):
   def __init__(self, original_error:ValueError, variable:LVariable):
@@ -96,11 +96,11 @@ class LabsBuild(object):
   def __init__(self):
     self._internal = Dict()
     self._internal.cache = Dict()
-    self._internal.variables = {}
+    self._internal.lvariables = {}
 
   def __getattr__(self, key:str):
     print(key)
-    if res := self._internal.variables.get(key) :
+    if res := self._internal.lvariables.get(key) :
       return res
     print(key)
     raise AttributeError(key)
@@ -112,7 +112,7 @@ class LabsBuild(object):
       if val.err is not None :
         (err_class, msg), from_err = val.err
         raise err_class(msg.format(varname=key)) from from_err
-      if existing := self._internal.variables.get(key) :
+      if existing := self._internal.lvariables.get(key) :
         raise VariableRedeclaredError(existing)
       try :
         val.default_value = val.type.cast(val.default_value)
@@ -132,10 +132,18 @@ class LabsBuild(object):
           except ValueError as e:
             raise CacheValueError(e, var) from e
           var.value = var_value
-      self._internal.variables[key] = var
+      self._internal.lvariables[key] = var
   
   __setitem__ = __setattr__
   __getitem__ = __getattr__
+
+  def writeCache(self, f:IO):
+    cmake.writeCache(f, self._internal.lvariables)
+
+  def writeNinja(self, f:IO):
+    #TODO
+    pass
+    
 
 
 class Labs(object):
@@ -182,21 +190,21 @@ class Labs(object):
     relative_paths = getattr(build, self.relative_path_key).value
 
     if src_path :
-      src_path = src_path.absolute()
-    build._internal.abs_build_path = build_path.absolute()
+      src_path = src_path.expanduser().resolve()
+    build._internal.abs_build_path = build_path.expanduser().resolve()
     if relative_paths :
       build._internal.build_path = Path('.')
       setattr(build, self.src_key, LVariable.I(
         relativeTo(src_path, build._internal.abs_build_path) if src_path else None,
         FILEPATH,
-        doc=tr('Source directory path. labs_build.py should be in this directory/')
+        doc=tr('Source directory path. labs_build.py should be in this directory.')
       ))
     else :
       build._internal.build_path = build._internal.abs_build_path
       setattr(build, self.src_key, LVariable.I(
         src_path,
         FILEPATH,
-        doc=tr('Source directory path. labs_build.py should be in this directory/')
+        doc=tr('Source directory path. labs_build.py should be in this directory.')
       ))
     # From now on, build path is the correct prefix, and everything should be relative to it. src_path points to the parent of labs_build.py.
       
@@ -228,12 +236,15 @@ class Labs(object):
         labs_src = f.read()
       labs_code = compile(labs_src, build._internal.labs_path, 'exec')
       exec(labs_code, ctx.globals, ctx.locals)
-      
-      # with (self.build_path/self.default_ninja_build_filename).open('w') as f :
-      #   self.project.writeNinja(f)
 
-      # with (self.build_path/self.cache_filename).open('w') as f :
-      #   self.project.writeCache(f)
+      with (build._internal.abs_build_path/self.cache_filename).open('w') as f :
+        build.writeCache(f)
+      
+      # with (build.abs_build_path/self.default_ninja_build_filename).open('w') as f :
+      #   build.writeNinja(f)
+
+  def write_cache(self):
+    pass
 
 
 def __getattr__(key):

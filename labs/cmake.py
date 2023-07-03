@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
+  
+from .utils import Dict
+from .variables import LVariable, LVariableDirection, Expr
+
+if TYPE_CHECKING :
+  from typing import IO
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
 cache_variable_re = re.compile(rf'(?P<key>{_id}):(?P<type>{_id})=(?P<value>.*)$')
@@ -29,13 +36,50 @@ def str2bool(s:str) -> bool:
 def varToCache(name:str, value:str, type:str='INTERNAL', desc:str=None, default_value:str=None):
   res = ''
   if desc or default_value:
-    res += '//'
+    res += '// '
     if desc :
       res += desc + ' '
-    if default_value :
+    if default_value is not None :
       res += f'(Default : {default_value})'
     res += '\n'
   res += f'{name}:{type}={value}'
   return res
 
+def exprToCache(expr):
+  return ''.join(p if isinstance(p, str) else p.expanded if isinstance(p, LVariable) else f'$({p.name})' for p in expr.parts)
 
+def writeCache(f:IO, variables: dict[str, LVariable]):
+  dir = [ [], [], [] ]
+  input, output, overwrite = dir
+  for v in variables.values() :
+    if not v.isEvaluated :
+      v.evaluate()
+    dir[v.direction - 1].append(v)
+  for d in dir :
+    d.sort(key=lambda v: v.name)
+  f.write("""\
+# Input variables
+# ---------------
+
+""")
+  for v in input :
+    f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__, v.doc, v.default_value))
+    f.write('\n\n')
+
+  f.write("""
+# Overwrite variables
+# -------------------
+
+""")
+  for v in overwrite :
+    f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__, v.doc, v.default_value))
+    f.write('\n\n')
+
+  f.write("""
+# Output variables
+# ----------------
+
+""")
+  for v in overwrite :
+    f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__))
+    f.write('\n\n')
