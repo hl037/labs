@@ -4,7 +4,6 @@ from labs import Labs
 from .utils import Dict
 import click
 
-
 @click.command(name="labs")
 @click.argument('src', nargs=1, required=False, default=None)
 @click.option('--build-dir', '-C', type=str, default=None)

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
   
 from .utils import Dict
-from .variables import LVariable, LVariableDirection, Expr
+from .variables import LVariable, Expr
 
 if TYPE_CHECKING :
   from typing import IO
@@ -49,37 +49,11 @@ def exprToCache(expr):
   return ''.join(p if isinstance(p, str) else p.expanded if isinstance(p, LVariable) else f'$({p.name})' for p in expr.parts)
 
 def writeCache(f:IO, variables: dict[str, LVariable]):
-  dir = [ [], [], [] ]
-  input, output, overwrite = dir
-  for v in variables.values() :
+  variable_list = list(variables.values())
+  for v in variable_list:
     if not v.isEvaluated :
       v.evaluate()
-    dir[v.direction - 1].append(v)
-  for d in dir :
-    d.sort(key=lambda v: v.name)
-  f.write("""\
-# Input variables
-# ---------------
-
-""")
-  for v in input :
+  variable_list.sort(key=lambda v: v.name)
+  for v in variable_list :
     f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__, v.doc, v.default_value))
-    f.write('\n\n')
-
-  f.write("""
-# Overwrite variables
-# -------------------
-
-""")
-  for v in overwrite :
-    f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__, v.doc, v.default_value))
-    f.write('\n\n')
-
-  f.write("""
-# Output variables
-# ----------------
-
-""")
-  for v in overwrite :
-    f.write(varToCache(v.name, exprToCache(v.expr), v.type.__name__))
     f.write('\n\n')

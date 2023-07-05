@@ -19,6 +19,8 @@ from .utils import Graph
 from .variables import (
   STRING,
   NUMBER,
+  FLOAT,
+  INT,
   BOOL,
   PATH,
   FILEPATH,
@@ -28,7 +30,10 @@ from .variables import (
   Expr,
   LVariableAlreadyEvaluatedError,
   LVariableTypeInferenceError,
+  lvariable,
 )
+
+from icecream import ic
 
 if TYPE_CHECKING :
   from typing import Union, IO
@@ -124,15 +129,17 @@ class LabsBuild(object):
         ) from e
         
       var = val.instanciate(self, key)
-      if var.direction is LVariableDirection.INPUT :
-        cache_expr = self._internal.cache.get(key)
-        if cache_expr :
-          try :
-            var_value = var.type.loads(cache_expr)
-          except ValueError as e:
-            raise CacheValueError(e, var) from e
-          var.value = var_value
       self._internal.lvariables[key] = var
+      cache_expr = self._internal.cache.get(key)
+      if cache_expr :
+        try :
+          var_value = var.type.loads(cache_expr)
+        except ValueError as e:
+          var._value = None
+          var._expr = Expr(cache_expr)
+          var._expanded = cache_expr
+          raise CacheValueError(e, var) from e
+        var.value = var_value
   
   __setitem__ = __setattr__
   __getitem__ = __getattr__
@@ -186,7 +193,7 @@ class Labs(object):
         build._internal.cache.update(self.parse_cache(cache_path))
       build._internal.cache.update(config)
 
-    setattr(build, self.relative_path_key, LVariable.I(False, BOOL, doc=tr('Should paths be relatives ?')))
+    setattr(build, self.relative_path_key, LVariable.decl(False, BOOL, doc=tr('Should paths be relatives ?')))
     relative_paths = getattr(build, self.relative_path_key).value
 
     if src_path :
@@ -194,14 +201,14 @@ class Labs(object):
     build._internal.abs_build_path = build_path.expanduser().resolve()
     if relative_paths :
       build._internal.build_path = Path('.')
-      setattr(build, self.src_key, LVariable.I(
+      setattr(build, self.src_key, LVariable.decl(
         relativeTo(src_path, build._internal.abs_build_path) if src_path else None,
         FILEPATH,
         doc=tr('Source directory path. labs_build.py should be in this directory.')
       ))
     else :
       build._internal.build_path = build._internal.abs_build_path
-      setattr(build, self.src_key, LVariable.I(
+      setattr(build, self.src_key, LVariable.decl(
         src_path,
         FILEPATH,
         doc=tr('Source directory path. labs_build.py should be in this directory.')
@@ -267,11 +274,12 @@ __all__ = [
   'LVariable',
   'build',
   'ctx',
-  'BOOL', 'NUMBER', 'STRING', 'PATH', 'FILEPATH',
+  'BOOL', 'NUMBER', 'INT', 'FLOAT', 'STRING', 'PATH', 'FILEPATH',
   'Expr',
   'Path',
   'Dict',
   'VariableRedeclaredError',
   'LVariableAlreadyEvaluatedError',
   'LVariableTypeInferenceError',
+  'lvariable',
 ]

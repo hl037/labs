@@ -33,7 +33,9 @@ class VariableType(object):
     t = type(value)
     if t is str :
       return STRING
-    elif t is int or t is float :
+    elif t is int:
+      return INT
+    elif t is float :
       return FLOAT
     elif t is bool :
       return BOOL
@@ -73,6 +75,34 @@ class STRING(VariableType):
       ) from e
 
 
+class INT(VariableType):
+  @classmethod
+  def loads(cls, s:str):
+    try :
+      return int(s)
+    except ValueError:
+      pass
+    raise ValueError(tr('INT expects an integer in a format that python accepts. Got "{value}".').format(value=s))
+    # TODO: UT + test ref
+  
+  @classmethod
+  def dumps(cls, n:int):
+    if not isinstance(n, int) :
+      raise TypeError(tr('INT expects an int. Got {type} (value = {value})').format(type=type(val).__name__, value=repr(val)))
+      # TODO: UT + test ref
+    return str(n)
+  
+  @classmethod
+  def cast(cls, value):
+    try :
+      return int(value)
+    except Exception as e:
+      raise TypeError(tr('INT expects something castable to int. Got {type} (value = {value}). This error occured : {reason}').format(
+        type=type(value).__name__,
+        value=repr(value),
+        reason=str(e))
+      ) from e
+
 class NUMBER(VariableType):
   @classmethod
   def loads(cls, s:str):
@@ -101,7 +131,6 @@ class NUMBER(VariableType):
         reason=str(e))
       ) from e
   
-INT = NUMBER
 FLOAT = NUMBER
 
 
@@ -198,10 +227,10 @@ class Variable(object):
 class LVariableDecl(object):
   """
   Variable declaration.
-  This is an helper function to distinguished variable being declared from variable existing. The build uses this distinction to cast to expression
+  This is an helper function to distinguish variable being declared from variable existing. The build uses this distinction to cast to expression
   a variable.
   """
-  def __init__(self, direction:LVariableDirection, default_value, type:VariableType, doc:str):
+  def __init__(self, default_value, type:VariableType, doc:str):
     if type is None :
       try :
         type = VariableType.typeOf(default_value)
@@ -211,14 +240,12 @@ class LVariableDecl(object):
         self.err = None
     else :
       self.err = None
-    self.direction = direction
     self.default_value = default_value
     self.type = type
     self.doc = doc
 
   def instanciate(self, build, name) -> LVariable:
     return LVariable(
-      self.direction,
       self.default_value,
       self.type,
       self.doc,
@@ -233,9 +260,8 @@ class LVariable(Variable):
   The cache is the evaluated value. NVariable are passed as ninja reference $(VAR).
   The self.expanded attribute is the one stored in the cache
   """
-  def __init__(self, direction:LVariableDirection, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
+  def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
     self.name = name
-    self.direction = direction
     self.default_value = default_value
     self.type = type
     self.doc = doc
@@ -300,18 +326,11 @@ class LVariable(Variable):
     self._expr = Expr(value) if value is not None else None
 
   @classmethod
-  def I(cls, default_value, type:VariableType=None, doc:str=''):
-    return LVariableDecl(LVariableDirection.INPUT, default_value, type, doc)
+  def decl(cls, default_value, type:VariableType=None, doc:str=''):
+    return LVariableDecl(default_value, type, doc)
+
+lvariable = LVariable.decl
     
-  @classmethod
-  def O(cls, default_value, type:VariableType=None, doc:str=''):
-    return LVariableDecl(LVariableDirection.OUTPUT, default_value, type, doc)
-    
-  @classmethod
-  def IO(cls, default_value, type:VariableType=None, doc:str=''):
-    return LVariableDecl(LVariableDirection.OVERWRITE, default_value, type, doc)
-  
-  
 class VariableRef(object):
   """
   A reference to a variable
@@ -359,11 +378,10 @@ class Expr(object):
         elif isinstance(a, str) :
           new_parts = self.parseString(a)
         if new_parts :
-          if isLastPartStr and isinstance(a.parts[0], str) :
+          if isLastPartStr and isinstance(a.parts[0], str) : # Merge strings following each others.
             self.parts[-1] += new_parts[0]
-            self.parts.extend(new_parts[1:])
-          else :
-            self.parts.extend(new_parts)
+            new_parts = new_parts[1:]
+          self.parts.extend(new_parts)
           isLastPartStr = isinstance(self.parts[-1], str)
 
   def parseString(self, s:str):
