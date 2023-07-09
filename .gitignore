@@ -1,6 +1,7 @@
 .DS_Store
 node_modules
 /dist
+/build
 
 # local env files
 .env.local
@@ -48,6 +49,5 @@ wsdata
 
 htmlcov
 .coverage
-build
 
 _me_*
