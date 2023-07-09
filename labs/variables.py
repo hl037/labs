@@ -3,6 +3,8 @@ from __future__ import annotations
 from enum import Enum, IntEnum
 import labs
 from pathlib import Path
+import re
+import weakref
 
 from .translation import tr
 
@@ -224,6 +226,30 @@ class Variable(object):
   Base Variable type
   """
 
+  # This class property holds weak refs to all instances.
+  # It's primary use is to retrieve a variable from its ref in an fstring.
+  instances:dict[int, weakref.ReferenceType[Variable]] = dict()
+
+  def __init__(self, build, name):
+    self.name = name
+    self.build = build
+    self.instances[id[self]] = weakref.ref(self)
+
+  @classmethod
+  def resolve(cls, ref:str) -> Variable:
+    # TODO : better errorsa
+    try :
+      result = cls.instances[int(ref)]()
+    except :
+      raise ValueError("Not a variable ref")
+    if result is None :
+      raise ValueError("Variable already destroyed")
+    return result
+  
+  def __format__(self, spec):
+    return f'$(\x00{id(self)})'
+
+
 class LVariableDecl(object):
   """
   Variable declaration.
@@ -261,14 +287,13 @@ class LVariable(Variable):
   The self.expanded attribute is the one stored in the cache
   """
   def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
-    self.name = name
+    super().__init__(build, name)
     self.default_value = default_value
     self.type = type
     self.doc = doc
     self._value = Nil
     self._expr = None
     self._expanded = None
-    self.build = build
 
   @property
   def isEvaluated(self):
@@ -331,28 +356,6 @@ class LVariable(Variable):
 
 lvariable = LVariable.decl
     
-class VariableRef(object):
-  """
-  A reference to a variable
-  """
-  def __init__(self, var:Variable):
-    self.name = var.name
-    # TODO add flag LVariable or NVariable etc.
-
-class LVariableRef(VariableRef):
-  """
-  A reference to a LVariable
-  """
-  pass
-
-class NVariableRef(VariableRef):
-  """
-  A reference to a NVariable
-  """
-  @property
-  def ninja_ref(self):
-    return f'$({self.name})'
-    
 
 class Expr(object):
   """
@@ -367,26 +370,47 @@ class Expr(object):
     self.parts = []
     isLastPartStr = False
     for a in args :
-      if isinstance(a, VariableRef) :
+      self += a
+  
+  def __iadd__(self, e:Expr|Variable|str):
+      if isinstance(a, Variable) :
         self.parts.append(a)
-        # TODO add flags to detect LVar ref and NVar ref recursively
       else :
         new_parts = None
         if isinstance(a, Expr) :
           if a.parts :
             new_parts = a.parts
+              
         elif isinstance(a, str) :
           new_parts = self.parseString(a)
-        if new_parts :
-          if isLastPartStr and isinstance(a.parts[0], str) : # Merge strings following each others.
-            self.parts[-1] += new_parts[0]
-            new_parts = new_parts[1:]
+          
+        if self.parts and isinstance(self.parts[-1], str) and new_parts and isinstance(new_parts[0], str) :
+          self.parts[-1] += new_parts[0]
+          self.parts.extend(new_parts[1:])
+        else :
           self.parts.extend(new_parts)
-          isLastPartStr = isinstance(self.parts[-1], str)
 
-  def parseString(self, s:str):
-    # TODO
-    return s
+  def __add__(self, oth):
+    result = Expr()
+    result += self
+    result += oth
+    return result
+
+  def __radd__(self, oth):
+    result = Expr()
+    result += oth
+    result += self
+    return result
+
+  variable_pattern = re.compile('\\$\\(\x00([0-9]+)\\)')
+
+  @classmethod
+  def parseString(cls, s:str):
+    raw_parts = self.variable_pattern.split(s)
+    return [ part if i % 2 else Variable.resolve(part) for i in range(len(naw_parts)) ]
+
+  def __format__(self, spec):
+    return ''.join(format(part) for part in self.parts)
 
     
   def __str__(self):
