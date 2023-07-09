@@ -233,7 +233,7 @@ class Variable(object):
   def __init__(self, build, name):
     self.name = name
     self.build = build
-    self.instances[id[self]] = weakref.ref(self)
+    self.instances[id(self)] = weakref.ref(self)
 
   @classmethod
   def resolve(cls, ref:str) -> Variable:
@@ -373,16 +373,16 @@ class Expr(object):
       self += a
   
   def __iadd__(self, e:Expr|Variable|str):
-      if isinstance(a, Variable) :
-        self.parts.append(a)
+      if isinstance(e, Variable) :
+        self.parts.append(e)
       else :
         new_parts = None
-        if isinstance(a, Expr) :
-          if a.parts :
-            new_parts = a.parts
+        if isinstance(e, Expr) :
+          if e.parts :
+            new_parts = e.parts
               
-        elif isinstance(a, str) :
-          new_parts = self.parseString(a)
+        elif isinstance(e, str) :
+          new_parts = self.parseString(e)
           
         if self.parts and isinstance(self.parts[-1], str) and new_parts and isinstance(new_parts[0], str) :
           self.parts[-1] += new_parts[0]
@@ -406,8 +406,8 @@ class Expr(object):
 
   @classmethod
   def parseString(cls, s:str):
-    raw_parts = self.variable_pattern.split(s)
-    return [ part if i % 2 else Variable.resolve(part) for i in range(len(naw_parts)) ]
+    raw_parts = cls.variable_pattern.split(s)
+    return [ part if not (i % 2) else Variable.resolve(part) for i, part in enumerate(raw_parts) ]
 
   def __format__(self, spec):
     return ''.join(format(part) for part in self.parts)
