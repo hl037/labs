@@ -320,15 +320,12 @@ class LVariable(Variable):
 
   @property
   def value(self):
+    """
+    Python value of the variable. The return type depends on the variable type.
+    """
     if self._value is Nil :
       self.evaluate()
     return self._value
-  
-  @property
-  def expanded(self):
-    if self._value is Nil :
-      self.evaluate()
-    return self._expanded
   
   @value.setter
   def value(self, value):
@@ -338,9 +335,22 @@ class LVariable(Variable):
     self._expanded = self.type.dumps(value)
     self._expr = Expr(self._expanded)
     self._value = value
+    
+  @property
+  def expanded(self):
+    """
+    Fully (recursively) expanded string value
+    """
+    if self._value is Nil :
+      self.evaluate()
+    return self._expanded
+  
 
   @property
   def expr(self):
+    """
+    Expression with no expansion at all.
+    """
     return self._expr
   
   @expr.setter
@@ -349,6 +359,7 @@ class LVariable(Variable):
     if self.isEvaluated :
       raise LVariableAlreadyEvaluated(self)
     self._expr = Expr(value) if value is not None else None
+
 
   @classmethod
   def decl(cls, default_value, type:VariableType=None, doc:str=''):
@@ -365,10 +376,8 @@ class Expr(object):
 
   @internal self.parts is a list of either string or variable references
   """
-  def __init__(self, *args:Expr|str):
-    # TODO support variable refs
+  def __init__(self, *args:Expr|Variable|str):
     self.parts = []
-    isLastPartStr = False
     for a in args :
       self += a
   
@@ -410,9 +419,9 @@ class Expr(object):
     return [ part if not (i % 2) else Variable.resolve(part) for i, part in enumerate(raw_parts) ]
 
   def __format__(self, spec):
-    return ''.join(format(part) for part in self.parts)
+    return ''.join(part if isinstance(part, str) else format(part, spec) for part in self.parts)
 
     
   def __str__(self):
-    return ''.join(map(str, self.parts))
+    return format(self, '')
 
