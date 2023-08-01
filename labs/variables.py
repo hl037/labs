@@ -213,31 +213,49 @@ class BOOL(VariableType):
         reason=str(e))
       ) from e
 
-class LVariableDirection(IntEnum):
-  INPUT = 1
-  OUTPUT = 2
-  OVERWRITE = 3
-
 class Nil:
   pass
 
 class Variable(object):
   """
-  Base Variable type
+  Base Variable type.
+
+  There are these representation of a variable value / expr:
+
+  value : python value of the variable (depends on the type)
+
+  expr : the Expr value of the variable.
+
+  cache_expr : a str representing the cache value assigned to the variable (Only LVariables)
+
+  build_expr : a str representing the string assigned to the variable in the ninja.build. (only NVariables)
+
+  expanded : The fully expanded string value, that is casted the right type to populate value.
+
+  An LVariable can be evaluated only once. An NVariable can be reassigned.
   """
 
   # This class property holds weak refs to all instances.
   # It's primary use is to retrieve a variable from its ref in an fstring.
   instances:dict[int, weakref.ReferenceType[Variable]] = dict()
 
-  def __init__(self, build, name):
+  def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
     self.name = name
     self.build = build
     self.instances[id(self)] = weakref.ref(self)
+    self.default_value = default_value
+    self.type = type
+    self.doc = doc
+    self._value = Nil
+    self._expr = None
+    self._expanded = None
 
   @classmethod
   def resolve(cls, ref:str) -> Variable:
-    # TODO : better errorsa
+    """
+    resolve the reference indirection to the variable.
+    """
+    # TODO : better errors
     try :
       result = cls.instances[int(ref)]()
     except :
@@ -248,6 +266,57 @@ class Variable(object):
   
   def __format__(self, spec):
     return f'$(\x00{id(self)})'
+  
+  @property
+  def isEvaluated(self):
+    return self._value is not Nil
+
+  def evaluate(self):
+    if self._expr is None :
+      self.value = self.default_value
+    else :
+      self._expr = Expr(self._expr)
+      self._expanded = format(self._expr, 'e')
+      self._value = self.type.loads(self._expanded)
+
+  @property
+  def value(self):
+    """
+    Python value of the variable. The return type depends on the variable type.
+    """
+    if self._value is Nil :
+      self.evaluate()
+    return self._value
+  
+  @value.setter
+  def value(self, value):
+    self._expanded = self.type.dumps(value)
+    self._expr = Expr(self._expanded)
+    self._value = value
+    
+  @property
+  def expanded(self):
+    """
+    Fully (recursively) expanded string value
+    """
+    if self._value is Nil :
+      self.evaluate()
+    return self._expanded
+  
+
+  @property
+  def expr(self):
+    """
+    Expression with no expansion at all.
+    """
+    return self._expr
+  
+  @expr.setter
+  def expr(self, value):
+    ## TODO check no ref from another build
+    if self.isEvaluated :
+      raise LVariableAlreadyEvaluated(self)
+    self._expr = Expr(value) if value is not None else None
 
 
 class LVariableDecl(object):
@@ -283,89 +352,58 @@ class LVariable(Variable):
   """
   Variable appearing in the LABS cache.
   An LVariable can be evaluated only once. after it is evaluated, its value can't change anymore.
-  The cache is the evaluated value. NVariable are passed as ninja reference $(VAR).
+  The cache is the evaluated value. BVariable are passed as ninja reference $(VAR).
   The self.expanded attribute is the one stored in the cache
   """
-  def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
-    super().__init__(build, name)
-    self.default_value = default_value
-    self.type = type
-    self.doc = doc
-    self._value = Nil
-    self._expr = None
-    self._expanded = None
-
-  @property
-  def isEvaluated(self):
-    return self._value is not Nil
-
+  
   def evaluate(self):
     if self.isEvaluated :
       raise LVariableAlreadyEvaluatedError(self)
-    if self._expr is None :
-      self.value = self.default_value
-    else :
-      self._expr = Expr(self._expr)
-      self._expanded = ''.join(
-        (
-          self.build[part.name].expanded
-          if isinstance(part, LVariableRef) else
-          part.ninja_ref
-          if isinstance(part, NVariableRef) else
-          part
-        )
-        for part in self._expr.parts
-      )
-      self._value = self.type.loads(self._expanded)
-
+    super().evaluate()
+    
   @property
   def value(self):
-    """
-    Python value of the variable. The return type depends on the variable type.
-    """
-    if self._value is Nil :
-      self.evaluate()
-    return self._value
+    return super().value
   
   @value.setter
   def value(self, value):
     if self.isEvaluated :
       raise LVariableAlreadyEvaluated(self)
     # Note : this order is important so that an expression is raised before the value is assigned if incompatible value
-    self._expanded = self.type.dumps(value)
-    self._expr = Expr(self._expanded)
-    self._value = value
+    Variable.value.__set__(self, value)
     
   @property
-  def expanded(self):
-    """
-    Fully (recursively) expanded string value
-    """
-    if self._value is Nil :
-      self.evaluate()
-    return self._expanded
-  
-
-  @property
   def expr(self):
-    """
-    Expression with no expansion at all.
-    """
-    return self._expr
+    return super().expr
   
   @expr.setter
   def expr(self, value):
-    ## TODO check no ref from another build
     if self.isEvaluated :
       raise LVariableAlreadyEvaluated(self)
-    self._expr = Expr(value) if value is not None else None
+    Variable.expr.__set__(self, value)
 
+  @property
+  def cache_expr(self):
+    return format(self.expr, 'c')
 
   @classmethod
   def decl(cls, default_value, type:VariableType=None, doc:str=''):
     return LVariableDecl(default_value, type, doc)
 
 lvariable = LVariable.decl
+
+class BVariable(Variable):
+  """
+  Variable appearing in the ninja build file.
+  A BVariable can be evaluated several time and its value can be changed
+  """
+  def __init__(self, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
+    super().__init__('', type, doc, build, name)
+    
+  @property
+  def build_expr(self):
+    return format(self.expr, 'b')
+    
     
 
 class Expr(object):

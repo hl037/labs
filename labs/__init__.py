@@ -26,7 +26,6 @@ from .variables import (
   FILEPATH,
   LVariable,
   LVariableDecl,
-  LVariableDirection,
   Expr,
   LVariableAlreadyEvaluatedError,
   LVariableTypeInferenceError,
