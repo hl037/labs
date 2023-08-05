@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
   
 from .utils import Dict
-from .variables import LVariable, Expr
+from .variables import LVariable, CVariable, Expr
 
 if TYPE_CHECKING :
   from typing import IO
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
 cache_variable_re = re.compile(rf'(?P<key>{_id}):(?P<type>{_id})=(?P<value>.*)$')
-deescape_re = r'(?<dollar>\\$)|\$\((?P<var>{id})\)'
+deescape_re = re.compile(r'(?<dollar>\\$)|\$\((?P<var>{id})\)')
 doc_re = re.compile(r'// (?P<doc>.*)')
 del _id
 
@@ -20,14 +20,14 @@ del _id
 def escape(s:str):
   return s.replace('$', '\\$')
 
-def deescape_sub(m:re.Match):
-  if m['dollar'] :
-    return '$'
-  if m['var'] :
-    return f'$(\x00{m["var"]})'
 
-def deescape(s:str):
-  return
+def deescape(s:str, get_variable):
+  def deescape_sub(m:re.Match):
+    if m['dollar'] :
+      return '$'
+    if m['var'] :
+      return format(get_variable(m['var']), 'r')
+  return deescape_re.sub(deescape_sub, s)
 
 
 def parse_cache(line_iterator):
@@ -52,30 +52,37 @@ def str2bool(s:str) -> bool:
     return True
   raise ValueError(s)
 
-def varToCache(name:str, value:str, type:str='INTERNAL', desc:str=None, default_value:str=None):
-  res = ''
-  if desc or default_value:
-    res += '// '
-    if desc :
-      res += desc + ' '
-    if default_value is not None :
-      res += f'(Default : {default_value})'
-    res += '\n'
+def varToCache(name:str, value:str, type:str='INTERNAL', desc:list[str]=[], default_value:str=None):
+  desc = list(desc)
+  if default_value is not None :
+    desc.append('(Default : {default_value})')
+  res = ''.join(f'// {line}\n' for line in desc)
   res += f'{name}:{type}={value}'
   return res
 
-def writeCache(f:IO, variables: dict[str, LVariable]):
+def writeCache(f:IO, variables: dict[str, LVariable|CVariable]):
   variable_list = list(variables.values())
   for v in variable_list:
     if not v.isEvaluated :
       v.evaluate()
   variable_list.sort(key=lambda v: v.name)
   for v in variable_list :
-    f.write(varToCache(
-      v.name,
-      v.cache_expr,
-      v.type.__name__,
-      v.doc,
-      format(v.default_value, 'c') if isinstance(v.default_value, Expr) else v.type.dumps(v.default_value)
-    ))
-    f.write('\n\n')
+    if isinstance(v, LVariable) :
+      f.write(varToCache(
+        v.name,
+        v.cache_expr,
+        v.type.__name__,
+        v.doc,
+        format(v.default_value, 'c') if isinstance(v.default_value, Expr) else v.type.dumps(v.default_value)
+      ))
+      f.write('\n\n')
+    elif isinstance(v, CVariable) :
+      f.write(varToCache(
+        v.name,
+        v.cache_expr,
+        'STRING(USER)',
+        v.doc,
+        None
+      ))
+      f.write('\n\n')
+      

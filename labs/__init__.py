@@ -131,10 +131,10 @@ class LabsBuild(object):
         
       var = val.instanciate(self, key)
       self._internal.lvariables[key] = var
-      cache_expr = self._internal.cache.get(key)
-      if cache_expr :
+      cache_var = self._internal.cache.get(key)
+      if cache_var :
         try :
-          var.expr = Expr(cache_expr)
+          var.expr = cache_var.expr
         except ValueError as e:
           var._value = None
           var._expr = Expr(cache_expr)
@@ -144,17 +144,18 @@ class LabsBuild(object):
   __setitem__ = __setattr__
   __getitem__ = __getattr__
 
-  def updateCache(self, cache:dict):
+  def update_cache(self, cache:dict):
     lvariables = self._internal.lvariables[key]
-    cache = self._internal.cache
+    dest_cache = self._internal.cache
     for key, (value, raw_doc) in cache.items() :
-      cache[key] = CVariable(None, raw_doc)
-    #TODO: deescape + resolve CVariables
-    #TODO: CVariable should forward when overriden by LVariable
-    
+      dest_cache[key] = CVariable(self, key, None, raw_doc)
+    for key, (value, raw_doc) in cache.items() :
+      dest_cache[key].expr = cmake.deescape(value, dest_cache.get)
 
   def writeCache(self, f:IO):
-    cmake.writeCache(f, self._internal.lvariables)
+    variables = self._internal.cache
+    variables.update(self._internal.lvariables)
+    cmake.writeCache(variables)
 
   def writeNinja(self, f:IO):
     #TODO
