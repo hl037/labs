@@ -1,24 +1,32 @@
-// Bool variable (Default : True)
+// Bool variable
+// (Default : True)
 IN_BOOL:BOOL=True
 
-// Filepath variable (Default : test2/test3)
+// Filepath variable
+// (Default : test2/test3)
 IN_FILEPATH:PATH=test2/test3
 
-// Float variable (Default : 42.5)
+// Float variable
+// (Default : 42.5)
 IN_FLOAT:NUMBER=42.5
 
-// Int variable (Default : 42)
+// Int variable
+// (Default : 42)
 IN_INT:INT=42
 
-// Path variable (Default : test1/test2)
+// Path variable
+// (Default : test1/test2)
 IN_PATH:PATH=test1/test2
 
-// String variable (Default : Test)
+// String variable
+// (Default : Test)
 IN_STRING:STRING=Test
 
-// Should paths be relatives ? (Default : False)
+// Should paths be relatives ?
+// (Default : False)
 LABS_RELATIVE_PATHS:BOOL=False
 
-// Source directory path. labs_build.py should be in this directory. (Default : {{test_dir}})
+// Source directory path. labs_build.py should be in this directory.
+// (Default : {{test_dir}})
 LABS_SOURCE_PATH:FILEPATH={{test_dir}}
 

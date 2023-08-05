@@ -533,8 +533,8 @@ class Expr(object):
     for a in args :
       self += a
   
-  def __iadd__(self, e:Expr|Variable|str):
-    if isinstance(e, Variable) :
+  def __iadd__(self, e:Expr|Expandable|str):
+    if isinstance(e, Expandable) :
       self.parts.append(e)
     else :
       new_parts = None

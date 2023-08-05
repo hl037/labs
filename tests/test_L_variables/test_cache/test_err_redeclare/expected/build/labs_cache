@@ -1,9 +1,12 @@
-// String variable (Default : Test)
+// String variable
+// (Default : Test)
 IN_STRING:STRING=Test
 
-// Should paths be relatives ? (Default : False)
+// Should paths be relatives ?
+// (Default : False)
 LABS_RELATIVE_PATHS:BOOL=False
 
-// Source directory path. labs_build.py should be in this directory. (Default : {{test_dir}})
+// Source directory path. labs_build.py should be in this directory.
+// (Default : {{test_dir}})
 LABS_SOURCE_PATH:FILEPATH={{test_dir}}
 

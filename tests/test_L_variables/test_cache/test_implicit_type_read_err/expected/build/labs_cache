@@ -1,12 +1,16 @@
-// Bool variable (Default : True)
+// Bool variable
+// (Default : True)
 IN_BOOL:BOOL=str_value2
 
-// Int variable (Default : 42)
+// Int variable
+// (Default : 42)
 IN_INT:INT=str_value
 
-// Should paths be relatives ? (Default : False)
+// Should paths be relatives ?
+// (Default : False)
 LABS_RELATIVE_PATHS:BOOL=False
 
-// Source directory path. labs_build.py should be in this directory. (Default : {{test_dir}})
+// Source directory path. labs_build.py should be in this directory.
+// (Default : {{test_dir}})
 LABS_SOURCE_PATH:FILEPATH={{test_dir}}
 
