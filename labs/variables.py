@@ -8,7 +8,7 @@ import re
 import weakref
 
 from .translation import tr
-from labs.cmake import escape as escape_cache
+from labs import cmake
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
   pass
@@ -223,7 +223,7 @@ class BOOL(VariableType):
 
 def escape(s:str, spec:str):
   if spec == 'c' :
-    return escape_cache(str)
+    return cmake.escape(str)
   return s
 
 
@@ -503,13 +503,16 @@ class LVariableDecl(object):
 
 lvariable = LVariable.decl
 
-class BVariable(Variable):
+class BVariable(RecursivelyReferenceable):
   """
   Variable appearing in the ninja build file.
   A BVariable can be evaluated several time and its value can be changed
   """
-  def __init__(self, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
-    super().__init__('', type, doc, build, name)
+  def __init__(self,  doc:str, build:labs.LabsBuild, name:str):
+    super().__init__()
+    self.doc = doc
+    self.build = build
+    self.name = name
     
   @property
   def build_expr(self):

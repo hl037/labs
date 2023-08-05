@@ -12,7 +12,7 @@ if TYPE_CHECKING :
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
 cache_variable_re = re.compile(rf'(?P<key>{_id}):(?P<type>{_id})=(?P<value>.*)$')
-deescape_re = re.compile(r'(?<dollar>\\$)|\$\((?P<var>{id})\)')
+deescape_re = re.compile(r'(?P<dollar>\\$)|\$\((?P<var>{id})\)')
 doc_re = re.compile(r'// (?P<doc>.*)')
 del _id
 
