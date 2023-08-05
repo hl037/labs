@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 from enum import Enum, IntEnum
+from collections import deque
 import labs
 from pathlib import Path
 import re
 import weakref
 
 from .translation import tr
+from labs.cmake import escape as escape_cache
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
   pass
 
 class LVariableTypeInferenceError(RuntimeError):
   #TODO UT
+  pass
+
+class VariableReferenceCycle(RuntimeError):
+  def __init__(self, msg, cycle):
+    cycle_msg = '->'.join(cycle + [cycle[0]])
+    super().__init__(f'{msg} : {cycle_msg}')
   pass
 
 
@@ -213,10 +221,47 @@ class BOOL(VariableType):
         reason=str(e))
       ) from e
 
+def escape(s:str, spec:str):
+  if spec == 'c' :
+    return escape_cache(str)
+  return s
+
+
 class Nil:
   pass
 
-class Variable(object):
+class DepCycleSearchMixin(object):
+  def __init__(self):
+    self.dep_cycle = None
+
+  def check_dep_cycle(self):
+    self.dep_cycle = None
+    return self._find_dep_cycle(set()) != []
+
+  def _update_dep_cycles(self, visited):
+    d = deque(visited)
+    for var in visited :
+      var.dep_cycle = list(d)
+      d.rotate(-1)
+
+  def _find_dep_cycle(self, visited:set[DepCycleSearchMixin]):
+    if self in visited :
+      return [self]
+    if self.expr is not None :
+      for p in self.expr.parts :
+        if isinstance(p, DepCycleSearchMixin) :
+          if p.dep_cycle is None :
+            res = p._find_dep_cycle(visited | self)
+            if res != [] :
+              if not visited :
+                self._update_dep_cycles(visited)
+              else :
+                res.insert(0, self)
+              return res
+    self.dep_cycle = []
+    return []
+
+class Variable(DepCycleSearchMixin):
   """
   Base Variable type.
 
@@ -232,7 +277,9 @@ class Variable(object):
 
   expanded : The fully expanded string value, that is casted the right type to populate value.
 
-  An LVariable can be evaluated only once. An NVariable can be reassigned.
+  An LVariable can be evaluated only once. An BVariable can be reassigned.
+
+  A CVariable is always a string, and is used in the cache to share a common value.
   """
 
   # This class property holds weak refs to all instances.
@@ -265,7 +312,15 @@ class Variable(object):
     return result
   
   def __format__(self, spec):
+    if spec == 'e' :
+      return self.expanded
     return f'$(\x00{id(self)})'
+
+  def __add__(self, oth):
+    return Expr(self) + oth
+
+  def __radd__(self, oth):
+    return oth + Expr(self)
   
   @property
   def isEvaluated(self):
@@ -273,17 +328,24 @@ class Variable(object):
 
   def evaluate(self):
     if self._expr is None :
-      self.value = self.default_value
-    else :
-      self._expr = Expr(self._expr)
-      self._expanded = format(self._expr, 'e')
-      self._value = self.type.loads(self._expanded)
+      if isinstance(self.default_value, Expr) :
+        self._expr = self.default_value
+      else :
+        self.value = self.default_value
+        return
+    if self.name == "var3" :
+      breakpoint()
+    self._expr = Expr(self._expr)
+    self._expanded = format(self._expr, 'e')
+    self._value = self.type.loads(self._expanded)
 
   @property
   def value(self):
     """
     Python value of the variable. The return type depends on the variable type.
     """
+    if self.name == "var3" :
+      breakpoint()
     if self._value is Nil :
       self.evaluate()
     return self._value
@@ -314,9 +376,35 @@ class Variable(object):
   @expr.setter
   def expr(self, value):
     ## TODO check no ref from another build
-    if self.isEvaluated :
-      raise LVariableAlreadyEvaluated(self)
     self._expr = Expr(value) if value is not None else None
+
+class CVariable(DepCycleSearchMixin):
+  """
+  
+  """
+  def __init__(self, expr:Expr, raw_doc:str, name:str):
+    self.expr = expr
+    self.raw_doc = raw_doc
+    self.name = name
+
+  @property
+  def cache_expr(self):
+    return format(self.expr, 'c')
+  
+  @property
+  def value(self):
+    return format(self.expr, 'e')
+  
+  def __format__(self, spec):
+    if spec == 'e' :
+      return format(self.expr, 'e')
+    if spec == 'c' :
+      return f'$({self.name})'
+    return f'$(\x00{id(self)})'
+
+
+    
+
 
 
 class LVariableDecl(object):
@@ -355,7 +443,7 @@ class LVariable(Variable):
   The cache is the evaluated value. BVariable are passed as ninja reference $(VAR).
   The self.expanded attribute is the one stored in the cache
   """
-  
+
   def evaluate(self):
     if self.isEvaluated :
       raise LVariableAlreadyEvaluatedError(self)
@@ -389,6 +477,17 @@ class LVariable(Variable):
   @classmethod
   def decl(cls, default_value, type:VariableType=None, doc:str=''):
     return LVariableDecl(default_value, type, doc)
+  
+  def __format__(self, spec):
+    if spec == 'c' :
+      self.check_cycles()
+      return f'$({self.name})'
+    return super().__format__(spec)
+
+  def check_cycles(self):
+    #TODO
+    pass
+    
 
 lvariable = LVariable.decl
 
@@ -409,7 +508,7 @@ class BVariable(Variable):
 class Expr(object):
   """
   Expressions for LVariables and NVariables.
-  Only string and variable ref concatenations are supported. This to force all logic in labs.build,
+  Only string and variable ref concatenations are supported. This is to force all logic in labs.build,
   but still have some conveninence to repeat the value of some variables.
 
   @internal self.parts is a list of either string or variable references
@@ -420,24 +519,27 @@ class Expr(object):
       self += a
   
   def __iadd__(self, e:Expr|Variable|str):
-      if isinstance(e, Variable) :
-        self.parts.append(e)
+    if isinstance(e, Variable) :
+      self.parts.append(e)
+    else :
+      new_parts = None
+      if isinstance(e, Expr) :
+        if e.parts :
+          new_parts = e.parts
+            
+      elif isinstance(e, str) :
+        new_parts = self.parseString(e)
+        
+      if self.parts and isinstance(self.parts[-1], str) and new_parts and isinstance(new_parts[0], str) :
+        self.parts[-1] += new_parts[0]
+        self.parts.extend(new_parts[1:])
       else :
-        new_parts = None
-        if isinstance(e, Expr) :
-          if e.parts :
-            new_parts = e.parts
-              
-        elif isinstance(e, str) :
-          new_parts = self.parseString(e)
-          
-        if self.parts and isinstance(self.parts[-1], str) and new_parts and isinstance(new_parts[0], str) :
-          self.parts[-1] += new_parts[0]
-          self.parts.extend(new_parts[1:])
-        else :
-          self.parts.extend(new_parts)
+        self.parts.extend(new_parts)
+    return self
+
 
   def __add__(self, oth):
+    breakpoint()
     result = Expr()
     result += self
     result += oth
@@ -457,7 +559,7 @@ class Expr(object):
     return [ part if not (i % 2) else Variable.resolve(part) for i, part in enumerate(raw_parts) ]
 
   def __format__(self, spec):
-    return ''.join(part if isinstance(part, str) else format(part, spec) for part in self.parts)
+    return ''.join(escape(part, spec) if isinstance(part, str) else format(part, spec) for part in self.parts)
 
     
   def __str__(self):

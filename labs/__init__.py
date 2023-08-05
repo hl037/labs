@@ -24,6 +24,7 @@ from .variables import (
   BOOL,
   PATH,
   FILEPATH,
+  CVariable,
   LVariable,
   LVariableDecl,
   Expr,
@@ -118,30 +119,39 @@ class LabsBuild(object):
         raise err_class(msg.format(varname=key)) from from_err
       if existing := self._internal.lvariables.get(key) :
         raise VariableRedeclaredError(existing)
-      try :
-        val.default_value = val.type.cast(val.default_value)
-      except TypeError as e:
-        raise TypeError(
-          tr(
-            'Error on assigning the default value to the variable {variable_name}. {reason}'
-          ).format(variable_name=key, reason=e.args[0])
-        ) from e
+      if not isinstance(val.default_value, Expr) :
+        try :
+          val.default_value = val.type.cast(val.default_value)
+        except TypeError as e:
+          raise TypeError(
+            tr(
+              'Error on assigning the default value to the variable {variable_name}. {reason}'
+            ).format(variable_name=key, reason=e.args[0])
+          ) from e
         
       var = val.instanciate(self, key)
       self._internal.lvariables[key] = var
       cache_expr = self._internal.cache.get(key)
       if cache_expr :
         try :
-          var_value = var.type.loads(cache_expr)
+          var.expr = Expr(cache_expr)
         except ValueError as e:
           var._value = None
           var._expr = Expr(cache_expr)
           var._expanded = cache_expr
           raise CacheValueError(e, var) from e
-        var.value = var_value
   
   __setitem__ = __setattr__
   __getitem__ = __getattr__
+
+  def updateCache(self, cache:dict):
+    lvariables = self._internal.lvariables[key]
+    cache = self._internal.cache
+    for key, (value, raw_doc) in cache.items() :
+      cache[key] = CVariable(None, raw_doc)
+    #TODO: deescape + resolve CVariables
+    #TODO: CVariable should forward when overriden by LVariable
+    
 
   def writeCache(self, f:IO):
     cmake.writeCache(f, self._internal.lvariables)
@@ -189,8 +199,8 @@ class Labs(object):
     if use_cache :
       cache_path = build_path / self.cache_filename
       if cache_path.is_file() :
-        build._internal.cache.update(self.parse_cache(cache_path))
-      build._internal.cache.update(config)
+        build.update_cache(self.parse_cache(cache_path))
+      build.update_cache({ key: (value, []) for key, value in config.items() })
 
     setattr(build, self.relative_path_key, LVariable.decl(False, BOOL, doc=tr('Should paths be relatives ?')))
     relative_paths = getattr(build, self.relative_path_key).value
