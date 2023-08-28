@@ -137,25 +137,25 @@ class LabsBuild(object):
           var.expr = cache_var.expr
         except ValueError as e:
           var._value = None
-          var._expr = Expr(cache_expr)
-          var._expanded = cache_expr
+          var._expr = cache_var.expr
+          var._expanded = format(cache_var.expr, 'e')
           raise CacheValueError(e, var) from e
   
   __setitem__ = __setattr__
   __getitem__ = __getattr__
 
   def update_cache(self, cache:dict):
-    lvariables = self._internal.lvariables[key]
+    lvariables = self._internal.lvariables
     dest_cache = self._internal.cache
     for key, (value, raw_doc) in cache.items() :
       dest_cache[key] = CVariable(self, key, None, raw_doc)
     for key, (value, raw_doc) in cache.items() :
       dest_cache[key].expr = cmake.deescape(value, dest_cache.get)
 
-  def writeCache(self, f:IO):
+  def write_cache(self, f:IO):
     variables = self._internal.cache
     variables.update(self._internal.lvariables)
-    cmake.writeCache(variables)
+    cmake.write_cache(f, variables)
 
   def writeNinja(self, f:IO):
     #TODO
@@ -255,7 +255,7 @@ class Labs(object):
       exec(labs_code, ctx.globals, ctx.locals)
 
       with (build._internal.abs_build_path/self.cache_filename).open('w') as f :
-        build.writeCache(f)
+        build.write_cache(f)
       
       # with (build.abs_build_path/self.default_ninja_build_filename).open('w') as f :
       #   build.writeNinja(f)

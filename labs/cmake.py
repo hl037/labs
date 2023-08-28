@@ -52,15 +52,15 @@ def str2bool(s:str) -> bool:
     return True
   raise ValueError(s)
 
-def varToCache(name:str, value:str, type:str='INTERNAL', desc:list[str]=[], default_value:str=None):
+def var_to_cache(name:str, value:str, type:str='INTERNAL', desc:list[str]=[], default_value:str=None):
   desc = list(desc)
   if default_value is not None :
-    desc.append('(Default : {default_value})')
+    desc.append(f'(Default : {default_value})')
   res = ''.join(f'// {line}\n' for line in desc)
   res += f'{name}:{type}={value}'
   return res
 
-def writeCache(f:IO, variables: dict[str, LVariable|CVariable]):
+def write_cache(f:IO, variables: dict[str, LVariable|CVariable]):
   variable_list = list(variables.values())
   for v in variable_list:
     if not v.isEvaluated :
@@ -68,7 +68,7 @@ def writeCache(f:IO, variables: dict[str, LVariable|CVariable]):
   variable_list.sort(key=lambda v: v.name)
   for v in variable_list :
     if isinstance(v, LVariable) :
-      f.write(varToCache(
+      f.write(var_to_cache(
         v.name,
         v.cache_expr,
         v.type.__name__,
@@ -77,7 +77,7 @@ def writeCache(f:IO, variables: dict[str, LVariable|CVariable]):
       ))
       f.write('\n\n')
     elif isinstance(v, CVariable) :
-      f.write(varToCache(
+      f.write(var_to_cache(
         v.name,
         v.cache_expr,
         'STRING(USER)',

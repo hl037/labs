@@ -223,7 +223,7 @@ class BOOL(VariableType):
 
 def escape(s:str, spec:str):
   if spec == 'c' :
-    return cmake.escape(str)
+    return cmake.escape(s)
   return s
 
 
@@ -264,14 +264,14 @@ class Expandable(object):
 
   @property
   def expr(self):
-    return _expr
+    return self._expr
   
   @expr.setter
   def expr(self, val):
-    self.set_expr(val)
+    self.set_expr(Expr(val))
 
-  def set_expr(self, val):
-    self._expr = Expr(val)
+  def set_expr(self, expr:Expr):
+    self._expr = expr
     self.expr_changed()
 
   def expr_changed(self):
@@ -341,16 +341,16 @@ class RecursivelyReferenceable(Expandable, Referenceable):
     Expandable.__init__(self)
     Referenceable.__init__(self)
 
-  def set_expr(self, expr):
-    if cycle := self.find_cycle(self):
+  def set_expr(self, expr:Expr):
+    if cycle := self.find_cycle(expr, self):
       self.cycle_detected(expr, cycle)
     super().set_expr(expr)
 
-  def find_cycle(self, source) -> list[RecursivelyReferenceable]:
-    for dep in ( part for parts in expr if isinstance(part, RecursivelyReferenceable) ):
+  def find_cycle(self, expr, source) -> list[RecursivelyReferenceable]:
+    for dep in ( part for part in expr.parts if isinstance(part, RecursivelyReferenceable) ):
       if dep is source :
         return [self]
-      if res := dep.find_cycle(source) :
+      if res := dep.find_cycle(dep.expr, source) :
         res.insert(0, self)
         return res
     return []
@@ -362,13 +362,14 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   """
   Something that is written to the cache
   """
-  def __init__(sela, build:labs.LabsBuild, name:str, doc:str|list[str]):
+  def __init__(self, build:labs.LabsBuild, name:str, doc:str|list[str]):
     super().__init__()
     self.build = build
     self.name = name
     if not isinstance(doc, list) :
       doc = [doc]
     self._doc = [ l for s in doc for l in s.split('\n') ]
+    self._cache_expr = None
     
   def expr_changed(self):
     super().expr_changed()
@@ -385,7 +386,7 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
 
   @property
   def doc(self):
-    return _doc
+    return self._doc
 
   
 class CVariable(CacheOutput):
@@ -426,7 +427,8 @@ class LVariable(CacheOutput):
     self._value = Nil
   
   def expr_changed(self):
-    self._value = Nil
+    self._value = Nil # Defensive programming if later we authorize changing the expr after on
+    self.evaluate()
 
   def set_expr(self, expr:Expr):
     if self._value is not Nil :
@@ -528,7 +530,7 @@ class Expr(object):
 
   @internal self.parts is a list of either string or variable references
   """
-  def __init__(self, *args:Expr|Variable|str):
+  def __init__(self, *args:Expr|Expandable|str):
     self.parts = []
     for a in args :
       self += a
@@ -554,7 +556,6 @@ class Expr(object):
 
 
   def __add__(self, oth):
-    breakpoint()
     result = Expr()
     result += self
     result += oth
