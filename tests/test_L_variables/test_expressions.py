@@ -110,10 +110,12 @@ def test_variable_err_does_not_exist(expectBuild):
   assert exc_info.match('`does_not_exist` does not exist')
 
 
-
-@pytest.mark.skip()
-def test_cycle_detection(expectBuild):
-  expectBuild()
+def test_cycle_detection_cvar(expectBuild):
+  with pytest.raises(CacheValueError) as exc_info:
+    expectBuild()
+  assert exc_info.match('assign var3 from cache')
+  assert exc_info.match('var3->var1->var2->var3')
+  
 # 
 # #TODO: test BVariable
 # 

@@ -31,6 +31,7 @@ from .variables import (
   LVariableAlreadyEvaluatedError,
   LVariableTypeInferenceError,
   lvariable,
+  VariableReferenceCycleError,
 )
 
 from icecream import ic
@@ -153,6 +154,8 @@ class LabsBuild(object):
         dest_cache[key].expr = cmake.deescape(value, dest_cache.__getitem__)
       except KeyError as e:
         raise CacheValueError(f'Referenced variable `{e.args[0]}` does not exist', dest_cache[key])
+      except VariableReferenceCycleError as e:
+        raise CacheValueError(e, dest_cache[key])
 
   def write_cache(self, f:IO):
     variables = self._internal.cache

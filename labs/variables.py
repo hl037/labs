@@ -18,7 +18,7 @@ class LVariableTypeInferenceError(RuntimeError):
   #TODO UT
   pass
 
-class VariableReferenceCycle(RuntimeError):
+class VariableReferenceCycleError(RuntimeError):
   def __init__(self, msg, cycle):
     cycle_msg = '->'.join(cycle + [cycle[0]])
     super().__init__(f'{msg} : {cycle_msg}')
@@ -380,7 +380,7 @@ class RecursivelyReferenceable(Expandable, Referenceable):
     return []
 
   def cycle_detected(self, expr, cycle):
-    raise NotImplementedError()
+    raise VariableReferenceCycleError(f'Variable reference cycle detected assigning {self.name}', [ (rr.name if hasattr(rr, 'name') else repr(rr)) for rr in cycle ])
 
 class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   """
