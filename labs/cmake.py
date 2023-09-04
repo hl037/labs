@@ -73,7 +73,7 @@ def write_cache(f:IO, variables: dict[str, LVariable|CVariable]):
         v.cache_expr,
         v.type.__name__,
         v.doc,
-        format(v.default_value, 'c') if isinstance(v.default_value, Expr) else v.type.dumps(v.default_value)
+        format(v.default_value, 'cr') if isinstance(v.default_value, Expr) else v.type.dumps(v.default_value)
       ))
       f.write('\n\n')
     elif isinstance(v, CVariable) :

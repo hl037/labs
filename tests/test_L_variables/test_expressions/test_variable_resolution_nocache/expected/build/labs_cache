@@ -1,0 +1,20 @@
+// Should paths be relatives ?
+// (Default : False)
+LABS_RELATIVE_PATHS:BOOL=False
+
+// Source directory path. labs_build.py should be in this directory.
+// (Default : {{test_dir}})
+LABS_SOURCE_PATH:FILEPATH={{test_dir}}
+
+// var 1
+// (Default : 4)
+var1:STRING=4
+
+// var 2
+// (Default : 2)
+var2:STRING=2
+
+// var1 + var2
+// (Default : $(var1)$(var2))
+var3:INT=$(var1)$(var2)
+

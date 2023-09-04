@@ -8,6 +8,7 @@ import re
 import weakref
 
 from .translation import tr
+from .core import LabsObject
 from labs import cmake
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
@@ -232,31 +233,45 @@ class Nil:
 
 class FormatDispatcher(object):
   """
-  Implements __format__ to dispatch to format_cache, format_expanded and format_ref
+  Implements __format__ to dispatch to format_cache_reference, format_expanded and format_ref
   """
-  def __init_subclass__(cls):
+  canonical_format = {
+    'cache_reference': 'cache_reference',
+    'cr': 'cache_reference',
+    'expanded': 'expanded',
+    'e': 'expanded',
+    'reference': 'reference',
+    'ref': 'reference',
+    'r': 'reference',
+    '': 'reference',
+  }
+
+  def __init_subclass__(cls, **kwargs):
+    super().__init_subclass__(**kwargs)
     cls._format_functions = {}
-    if hasattr(cls, 'format_cache') :
-      cls._format_functions['c'] = cls.format_cache
-      cls._format_functions['cache'] = cls.format_cache
+    if hasattr(cls, 'format_cache_reference') :
+      cls._format_functions['cr'] = cls.format_cache_reference
+      cls._format_functions['cache_reference'] = cls.format_cache_reference
     if hasattr(cls, 'format_expanded') :
       cls._format_functions['e'] = cls.format_expanded
       cls._format_functions['expanded'] = cls.format_expanded
-    if hasattr(cls, 'format_expanded') :
+    if hasattr(cls, 'format_ref') :
       cls._format_functions['r'] = cls.format_ref
       cls._format_functions['ref'] = cls.format_ref
       cls._format_functions['reference'] = cls.format_ref
       cls._format_functions[''] = cls.format_ref
 
   def __format__(self, spec):
-    return self._format_functions[spec]()
+    return self._format_functions[spec](self)
       
     
 
-class Expandable(object):
+class Expandable(LabsObject):
   """
   May contains an expression, and can be expanded
   """
+  _repr_attrs = {'expr': repr}
+  
   def __init__(self):
     self.dep_cycle = None
     self._expr = None
@@ -271,7 +286,7 @@ class Expandable(object):
     self.set_expr(Expr(val))
 
   def set_expr(self, expr:Expr):
-    self._expr = expr
+    self._expr = expr or Expr()
     self.expr_changed()
 
   def expr_changed(self):
@@ -294,7 +309,7 @@ class Expandable(object):
     return self.expanded
 
 
-class Referenceable(object):
+class Referenceable(LabsObject):
   """
   Object possible to reference in an expression
   """
@@ -346,7 +361,9 @@ class RecursivelyReferenceable(Expandable, Referenceable):
       self.cycle_detected(expr, cycle)
     super().set_expr(expr)
 
-  def find_cycle(self, expr, source) -> list[RecursivelyReferenceable]:
+  def find_cycle(self, expr:Expr|None, source) -> list[RecursivelyReferenceable]:
+    if expr is None :
+      return []
     for dep in ( part for part in expr.parts if isinstance(part, RecursivelyReferenceable) ):
       if dep is source :
         return [self]
@@ -362,6 +379,7 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   """
   Something that is written to the cache
   """
+  _repr_attrs = {'name': str}
   def __init__(self, build:labs.LabsBuild, name:str, doc:str|list[str]):
     super().__init__()
     self.build = build
@@ -378,11 +396,11 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   @property
   def cache_expr(self):
     if self._cache_expr is None :
-      self._cache_expr = format(self.expr, 'c')
+      self._cache_expr = format(self.expr, 'cr')
     return self._cache_expr
   
-  def format_cache(self):
-    return self.cache_expr
+  def format_cache_reference(self):
+    return f'$({self.name})'
 
   @property
   def doc(self):
@@ -419,7 +437,6 @@ class LVariable(CacheOutput):
   A CVariable is always a string, and is used in the cache to share a common value.
   """
 
-
   def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
     super().__init__(build, name, doc)
     self.default_value = default_value
@@ -445,11 +462,19 @@ class LVariable(CacheOutput):
   def evaluate(self):
     if self.expr is None :
       if isinstance(self.default_value, Expr) :
-        self.expr = self.default_value
+        self.expr = self.default_value # evaluate() will be called again after set_expr -> expr_changed, but with Expr != None, leading to _expanded being set
       else :
         self.value = self.default_value # Using property setter to update _expr and _expanded
-        return
-    self._value = self.type.loads(self.expanded)
+    else :
+      self._expanded = self.expand()
+      self._value = self.type.loads(self._expanded)
+
+  @property
+  def expanded(self):
+    if self._expanded is None :
+      self.evaluate()
+    return self._expanded
+  
 
   @property
   def value(self):
@@ -522,7 +547,7 @@ class BVariable(RecursivelyReferenceable):
     
     
 
-class Expr(object):
+class Expr(LabsObject):
   """
   Expressions for LVariables and NVariables.
   Only string and variable ref concatenations are supported. This is to force all logic in labs.build,
@@ -530,6 +555,7 @@ class Expr(object):
 
   @internal self.parts is a list of either string or variable references
   """
+  _repr_attrs = {'self': lambda s: ', '.join( repr(p) for p in s.parts )}
   def __init__(self, *args:Expr|Expandable|str):
     self.parts = []
     for a in args :
@@ -569,13 +595,19 @@ class Expr(object):
 
   variable_pattern = re.compile('\\$\\(\x00([0-9]+)\\)')
 
+  @staticmethod
+  def format_part(part, spec):
+    if isinstance(part, str) :
+      return escape(part, spec)
+    return format(part, spec)
+
   @classmethod
   def parseString(cls, s:str):
     raw_parts = cls.variable_pattern.split(s)
     return [ part if not (i % 2) else Variable.resolve(part) for i, part in enumerate(raw_parts) ]
 
   def __format__(self, spec):
-    return ''.join(escape(part, spec) if isinstance(part, str) else format(part, spec) for part in self.parts)
+    return ''.join( self.format_part(part, spec) for part in self.parts )
 
     
   def __str__(self):

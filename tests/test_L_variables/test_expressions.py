@@ -97,7 +97,6 @@ def test_concat():
   assert value2 == 42
 
 
-@pytest.mark.skip()
 def test_variable_resolution_nocache(expectBuild):
   expectBuild()
   
