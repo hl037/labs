@@ -39,11 +39,10 @@ if TYPE_CHECKING :
   from typing import Union, IO
 
 class CacheValueError(ValueError):
-  def __init__(self, original_error:ValueError, variable:LVariable):
+  def __init__(self, original_error:RuntimeError|str, variable:LVariable):
     self.original_error = original_error
     self.variable = variable
-    super().__init__(tr('Impossible to assign {variable_name} from cache. {reason}').format(variable_name=variable.name, reason=original_error.args[0]))
-    
+    super().__init__(tr('Impossible to assign {variable_name} from cache. {reason}').format(variable_name=variable.name, reason=original_error.args[0] if not isinstance(original_error, str) else original_error))
 
 class VariableRedeclaredError(RuntimeError):
   def __init__(self, variable:LVariable):
@@ -100,7 +99,7 @@ class LabsBuild(object):
 
   def __init__(self):
     self._internal = Dict()
-    self._internal.cache = Dict()
+    self._internal.cache = {}
     self._internal.lvariables = {}
 
   def __getattr__(self, key:str):
@@ -150,7 +149,10 @@ class LabsBuild(object):
     for key, (value, raw_doc) in cache.items() :
       dest_cache[key] = CVariable(self, key, None, raw_doc)
     for key, (value, raw_doc) in cache.items() :
-      dest_cache[key].expr = cmake.deescape(value, dest_cache.get)
+      try :
+        dest_cache[key].expr = cmake.deescape(value, dest_cache.__getitem__)
+      except KeyError as e:
+        raise CacheValueError(f'Referenced variable `{e.args[0]}` does not exist', dest_cache[key])
 
   def write_cache(self, f:IO):
     variables = self._internal.cache

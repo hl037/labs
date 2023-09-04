@@ -11,8 +11,8 @@ if TYPE_CHECKING :
   from typing import IO
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
-cache_variable_re = re.compile(rf'(?P<key>{_id}):(?P<type>{_id})=(?P<value>.*)$')
-deescape_re = re.compile(r'(?P<dollar>\\$)|\$\((?P<var>{id})\)')
+cache_variable_re = re.compile(rf'(?P<key>{_id})(:(?P<type>{_id}))?=(?P<value>.*)$')
+deescape_re = re.compile(rf'(?P<dollar>\\$)|\$\((?P<var>{_id})\)')
 doc_re = re.compile(r'// (?P<doc>.*)')
 del _id
 
@@ -63,7 +63,7 @@ def var_to_cache(name:str, value:str, type:str='INTERNAL', desc:list[str]=[], de
 def write_cache(f:IO, variables: dict[str, LVariable|CVariable]):
   variable_list = list(variables.values())
   for v in variable_list:
-    if not v.isEvaluated :
+    if isinstance(v, LVariable) and not v.is_evaluated :
       v.evaluate()
   variable_list.sort(key=lambda v: v.name)
   for v in variable_list :

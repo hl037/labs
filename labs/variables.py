@@ -24,8 +24,15 @@ class VariableReferenceCycle(RuntimeError):
     super().__init__(f'{msg} : {cycle_msg}')
   pass
 
+class VariableTypeMeta(type):
+  """
+  A meta class to support repr of the vatriable type classes
+  """
+  def __repr__(self):
+    return f'<{self.__name__} LVariable type>'
+    
 
-class VariableType(object):
+class VariableType(object, metaclass=VariableTypeMeta):
   """
   Variable type.
   This class will hold some utils parse / print variables
@@ -456,7 +463,7 @@ class LVariable(CacheOutput):
     raise VariableReferenceCycle("Can't assign `{expr}` to {self.name} because it creates a reference cycle", self.dep_cycle)
       
   @property
-  def isEvaluated(self):
+  def is_evaluated(self):
     return self._value is not Nil
 
   def evaluate(self):
@@ -499,12 +506,14 @@ class LVariable(CacheOutput):
     return LVariableDecl(default_value, type, doc)
     
 
-class LVariableDecl(object):
+class LVariableDecl(LabsObject):
   """
   Variable declaration.
   This is an helper function to distinguish variable being declared from variable existing. The build uses this distinction to cast to expression
   a variable.
   """
+  
+  _repr_attrs = { 'type': repr, 'default_value': repr}    
   def __init__(self, default_value, type:VariableType, doc:str):
     if type is None :
       try :
@@ -571,7 +580,7 @@ class Expr(LabsObject):
           new_parts = e.parts
             
       elif isinstance(e, str) :
-        new_parts = self.parseString(e)
+        new_parts = self.parse_string(e)
         
       if self.parts and isinstance(self.parts[-1], str) and new_parts and isinstance(new_parts[0], str) :
         self.parts[-1] += new_parts[0]
@@ -602,9 +611,9 @@ class Expr(LabsObject):
     return format(part, spec)
 
   @classmethod
-  def parseString(cls, s:str):
+  def parse_string(cls, s:str):
     raw_parts = cls.variable_pattern.split(s)
-    return [ part if not (i % 2) else Variable.resolve(part) for i, part in enumerate(raw_parts) ]
+    return [ part if not (i % 2) else Referenceable.resolve(part) for i, part in enumerate(raw_parts) ]
 
   def __format__(self, spec):
     return ''.join( self.format_part(part, spec) for part in self.parts )

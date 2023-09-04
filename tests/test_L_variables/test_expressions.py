@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from labs import LVariable, STRING, INT, FLOAT, PATH, FILEPATH, BOOL, Expr
+from labs import LVariable, STRING, INT, FLOAT, PATH, FILEPATH, BOOL, Expr, CacheValueError
 
 def test_default_value_init():
   var = LVariable(Expr("Test"), STRING, "", None, "var")
@@ -100,9 +100,16 @@ def test_concat():
 def test_variable_resolution_nocache(expectBuild):
   expectBuild()
   
-@pytest.mark.skip()
 def test_variable_resolution_cache(expectBuild):
   expectBuild()
+  
+def test_variable_err_does_not_exist(expectBuild):
+  with pytest.raises(CacheValueError) as exc_info:
+    expectBuild()
+  assert exc_info.match('assign var3')
+  assert exc_info.match('`does_not_exist` does not exist')
+
+
 
 @pytest.mark.skip()
 def test_cycle_detection(expectBuild):
