@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from labs import LVariable, STRING, INT, FLOAT, PATH, FILEPATH, BOOL, Expr, CacheValueError
+from labs import LVariable, BVariable, STRING, INT, FLOAT, PATH, FILEPATH, BOOL, Expr, CacheValueError, VariableReferenceCycleError
 
 def test_default_value_init():
   var = LVariable(Expr("Test"), STRING, "", None, "var")
@@ -114,6 +114,17 @@ def test_cycle_detection_cvar(expectBuild):
   with pytest.raises(CacheValueError) as exc_info:
     expectBuild()
   assert exc_info.match('assign var3 from cache')
+  assert exc_info.match('var3->var1->var2->var3')
+  
+def test_cycle_detection_bvar(expectBuild):
+  with pytest.raises(VariableReferenceCycleError) as exc_info:
+    var1 = BVariable("", None, "var1")
+    var2 = BVariable("", None, "var2")
+    var3 = BVariable("", None, "var3")
+    var1.expr = var2
+    var2.expr = var3
+    var3.expr = var1
+  assert exc_info.match('assigning var3')
   assert exc_info.match('var3->var1->var2->var3')
   
 # 
