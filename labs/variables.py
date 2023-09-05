@@ -285,7 +285,7 @@ class Expandable(LabsObject):
   """
   May contains an expression, and can be expanded
   """
-  _repr_attrs = {'expr': repr}
+  _repr_attrs = {'_expr': repr}
   
   def __init__(self):
     self.dep_cycle = None
@@ -396,7 +396,8 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   """
   _repr_attrs = {'name': str}
   def __init__(self, build:labs.LabsBuild, name:str, doc:str|list[str]):
-    super().__init__()
+    RecursivelyReferenceable.__init__(self)
+    FormatDispatcher.__init__(self)
     self.build = build
     self.name = name
     if not isinstance(doc, list) :
@@ -455,6 +456,8 @@ class LVariable(CacheOutput):
   A CVariable is always a string, and is used in the cache to share a common value.
   """
 
+  decl_cls:type = None # Assigned by VariableDecl
+
   def __init__(self, default_value, type:VariableType, doc:str, build:labs.LabsBuild, name:str):
     super().__init__(build, name, doc)
     self.default_value = default_value
@@ -480,7 +483,7 @@ class LVariable(CacheOutput):
     return self._value is not Nil
 
   def evaluate(self):
-    if self.expr is None :
+    if self._expr is None :
       if isinstance(self.default_value, str) :
         self.default_value = Expr(self.default_value)
       if isinstance(self.default_value, Expr) :
@@ -515,44 +518,31 @@ class LVariable(CacheOutput):
     self._expr = Expr(self._expanded)
     self._value = value
     
+  @property
+  def expr(self):
+    if self._expr is None :
+      self.evaluate()
+    return self._expr
+  
+  @expr.setter
+  def expr(self, val):
+    self.set_expr(Expr(val))
 
   @classmethod
   def decl(cls, default_value, type:VariableType=None, doc:str=''):
-    return LVariableDecl(default_value, type, doc)
-    
-
-class LVariableDecl(LabsObject):
-  """
-  Variable declaration.
-  This is an helper function to distinguish variable being declared from variable existing. The build uses this distinction to cast to expression
-  a variable.
-  """
-  
-  _repr_attrs = { 'type': repr, 'default_value': repr}    
-  def __init__(self, default_value, type:VariableType, doc:str):
+    err = None
     if type is None :
       try :
         type = VariableType.typeOf(default_value)
       except TypeError as e:
-        self.err = (LVariableTypeInferenceError, f"Can't infer the type of {{varname}}. {e.args[0]}"), e
-      else :
-        self.err = None
-    else :
-      self.err = None
-    self.default_value = default_value
-    self.type = type
-    self.doc = doc
+        err = (LVariableTypeInferenceError, f"Can't infer the type of {{varname}}. {e.args[0]}"), e
+    elif not isinstance(default_value, Expr) :
+      try :
+        default_value = type.cast(default_value)
+      except TypeError as e:
+        err = (TypeError, f'Error on assigning the default value to the variable {variable_name}. {e.args[0]}'), e
+    return cls.decl_cls(default_value=default_value, type=type, doc=doc, err=err)
 
-  def instanciate(self, build, name) -> LVariable:
-    return LVariable(
-      self.default_value,
-      self.type,
-      self.doc,
-      build,
-      name
-    )
-
-lvariable = LVariable.decl
 
 class BVariable(RecursivelyReferenceable, FormatDispatcher):
   """
@@ -560,6 +550,8 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher):
   A BVariable can be evaluated several time and its value can be changed
   """
   _repr_attrs = {'name': str, 'expr':repr}
+  decl_cls:type = None # Assigned by VariableDecl
+  
   def __init__(self,  doc:str, build:labs.LabsBuild, name:str, expr:Expr=None):
     super().__init__()
     self.doc = doc
@@ -574,12 +566,58 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher):
 
   def format_build_reference(self):
     return f'$({self.name})'
-    
+
+  @classmethod
+  def decl(cls, expr:Expr=None, doc=None):
+    return cls.decl_cls(expr=expr, doc=doc)
+
+
 class LBVariable(LVariable, BVariable):
   """
   A LVariable which is also exported in the ninja.build
   """
   format_build_reference = BVariable.format_build_reference
+  
+
+class VariableDecl(LabsObject):
+  """
+  Variable declaration.
+  This is an helper function to distinguish variable being declared from variable existing. The build uses this distinction to cast to expression
+  a variable.
+  """
+  
+  _repr_attrs = { 'type': repr, 'default_value': repr}    
+  def __init_subclass__(cls_, cls, **kwargs):
+    cls_.cls = cls
+    cls.decl_cls = cls_
+    super().__init_subclass__(**kwargs)
+  
+  def __init__(self, *args, err=None, **kwargs):
+    self.args = args
+    self.kwargs = kwargs
+    self.err = err
+
+  def instanciate(self, build, name) -> LVariable:
+    return self.cls(
+      *self.args,
+      build=build,
+      name=name,
+      **self.kwargs,
+    )
+
+class LVariableDecl(VariableDecl, cls=LVariable):
+  pass
+
+class BVariableDecl(VariableDecl, cls=BVariable):
+  pass
+
+class LBVariableDecl(VariableDecl, cls=LBVariable):
+  pass
+    
+lvariable = LVariable.decl
+bvariable = BVariable.decl
+lbvariable = LBVariable.decl
+
 
 class Expr(LabsObject):
   """

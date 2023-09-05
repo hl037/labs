@@ -27,6 +27,7 @@ from .variables import (
   CVariable,
   LVariable,
   BVariable,
+  LBVariable,
   BVariableAssignedToLVariableError,
   LVariableDecl,
   Expr,
@@ -121,15 +122,6 @@ class LabsBuild(object):
         raise err_class(msg.format(varname=key)) from from_err
       if existing := self._internal.lvariables.get(key) :
         raise VariableRedeclaredError(existing)
-      if not isinstance(val.default_value, Expr) :
-        try :
-          val.default_value = val.type.cast(val.default_value)
-        except TypeError as e:
-          raise TypeError(
-            tr(
-              'Error on assigning the default value to the variable {variable_name}. {reason}'
-            ).format(variable_name=key, reason=e.args[0])
-          ) from e
         
       var = val.instanciate(self, key)
       self._internal.lvariables[key] = var

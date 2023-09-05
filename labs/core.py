@@ -19,8 +19,17 @@ class LabsObject(object):
         if issubclass(parent, LabsObject) :
           cls._all_repr_attrs.update({ attr: cast for attr, cast in parent._all_repr_attrs.items() if attr not in cls._all_repr_attrs })
 
+  def _repr_attr(self, attr, cast):
+    if attr == 'self' :
+      return cast(self)
+    if attr[0] == '_' :
+      label = attr[1:]
+    else :
+      label = attr
+    return f'{label}={cast(getattr(self, attr))}'
+
   def __repr__(self):
-    attrs = ', '.join( (f'{attr}={cast(getattr(self, attr))}' if attr != 'self' else cast(self)) for attr, cast in self._all_repr_attrs.items() )
+    attrs = ', '.join( self._repr_attr(attr, cast) for attr, cast in self._all_repr_attrs.items() )
     return f'{self.__class__.__name__}({attrs})'
     
     
