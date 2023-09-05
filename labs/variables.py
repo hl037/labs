@@ -24,6 +24,9 @@ class VariableReferenceCycleError(RuntimeError):
     super().__init__(f'{msg} : {cycle_msg}')
   pass
 
+class BVariableAssignedToLVariableError(TypeError):
+  pass
+
 class VariableTypeMeta(type):
   """
   A meta class to support repr of the vatriable type classes
@@ -245,6 +248,8 @@ class FormatDispatcher(object):
   canonical_format = {
     'cache_reference': 'cache_reference',
     'cr': 'cache_reference',
+    'build_reference': 'build_reference',
+    'br': 'build_reference',
     'expanded': 'expanded',
     'e': 'expanded',
     'reference': 'reference',
@@ -259,6 +264,9 @@ class FormatDispatcher(object):
     if hasattr(cls, 'format_cache_reference') :
       cls._format_functions['cr'] = cls.format_cache_reference
       cls._format_functions['cache_reference'] = cls.format_cache_reference
+    if hasattr(cls, 'format_build_reference') :
+      cls._format_functions['br'] = cls.format_build_reference
+      cls._format_functions['build_reference'] = cls.format_build_reference
     if hasattr(cls, 'format_expanded') :
       cls._format_functions['e'] = cls.format_expanded
       cls._format_functions['expanded'] = cls.format_expanded
@@ -409,6 +417,9 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   def format_cache_reference(self):
     return f'$({self.name})'
 
+  def format_build_reference(self):
+    return self.expanded
+
   @property
   def doc(self):
     return self._doc
@@ -457,6 +468,8 @@ class LVariable(CacheOutput):
   def set_expr(self, expr:Expr):
     if self._value is not Nil :
       raise LVariableAlreadyEvaluatedError("Can't change the expression of {self.name} because it has already been evaluated")
+    if part := next(( part for part in expr.parts if (isinstance(part, BVariable) and not isinstance(part, LBVariable)) ), None) :
+      raise BVariableAssignedToLVariableError(f"A BVariable cannot be part of the expression of an LVariable. ({repr(part)} assigned to {repr(self)}) ")
     super().set_expr(expr)
 
   def cycle_detected(self, expr, cycle):
@@ -468,6 +481,8 @@ class LVariable(CacheOutput):
 
   def evaluate(self):
     if self.expr is None :
+      if isinstance(self.default_value, str) :
+        self.default_value = Expr(self.default_value)
       if isinstance(self.default_value, Expr) :
         self.expr = self.default_value # evaluate() will be called again after set_expr -> expr_changed, but with Expr != None, leading to _expanded being set
       else :
@@ -539,22 +554,32 @@ class LVariableDecl(LabsObject):
 
 lvariable = LVariable.decl
 
-class BVariable(RecursivelyReferenceable):
+class BVariable(RecursivelyReferenceable, FormatDispatcher):
   """
   Variable appearing in the ninja build file.
   A BVariable can be evaluated several time and its value can be changed
   """
-  def __init__(self,  doc:str, build:labs.LabsBuild, name:str):
+  _repr_attrs = {'name': str, 'expr':repr}
+  def __init__(self,  doc:str, build:labs.LabsBuild, name:str, expr:Expr=None):
     super().__init__()
     self.doc = doc
     self.build = build
     self.name = name
+    if expr is not None :
+      self.expr = Expr(expr)
     
   @property
   def build_expr(self):
-    return format(self.expr, 'b')
+    return format(self.expr, 'br')
+
+  def format_build_reference(self):
+    return f'$({self.name})'
     
-    
+class LBVariable(LVariable, BVariable):
+  """
+  A LVariable which is also exported in the ninja.build
+  """
+  format_build_reference = BVariable.format_build_reference
 
 class Expr(LabsObject):
   """

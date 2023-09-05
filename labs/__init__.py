@@ -27,6 +27,7 @@ from .variables import (
   CVariable,
   LVariable,
   BVariable,
+  BVariableAssignedToLVariableError,
   LVariableDecl,
   Expr,
   LVariableAlreadyEvaluatedError,

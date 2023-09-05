@@ -1,6 +1,20 @@
 from pathlib import Path
 import pytest
-from labs import LVariable, BVariable, STRING, INT, FLOAT, PATH, FILEPATH, BOOL, Expr, CacheValueError, VariableReferenceCycleError
+from labs import (
+  CVariable,
+  LVariable,
+  BVariable,
+  STRING,
+  INT,
+  FLOAT,
+  PATH,
+  FILEPATH,
+  BOOL,
+  Expr,
+  CacheValueError,
+  VariableReferenceCycleError,
+  BVariableAssignedToLVariableError,
+)
 
 def test_default_value_init():
   var = LVariable(Expr("Test"), STRING, "", None, "var")
@@ -116,7 +130,7 @@ def test_cycle_detection_cvar(expectBuild):
   assert exc_info.match('assign var3 from cache')
   assert exc_info.match('var3->var1->var2->var3')
   
-def test_cycle_detection_bvar(expectBuild):
+def test_cycle_detection_bvar():
   with pytest.raises(VariableReferenceCycleError) as exc_info:
     var1 = BVariable("", None, "var1")
     var2 = BVariable("", None, "var2")
@@ -126,7 +140,30 @@ def test_cycle_detection_bvar(expectBuild):
     var3.expr = var1
   assert exc_info.match('assigning var3')
   assert exc_info.match('var3->var1->var2->var3')
-  
+
+def test_assign_bvar_to_lvar_err():
+  bvar = BVariable('', None, 'bvar')
+  bvar.expr = "test"
+  lvar = LVariable(f'This is a Test with {bvar} assigned to lvar', STRING, "", None, "lvar")
+  with pytest.raises(BVariableAssignedToLVariableError) as exc_info:
+    lvar.evaluate()
+  assert exc_info.match('bvar')
+  assert exc_info.match('lvar')
+  assert exc_info.match(r'assigned to LVariable\(')
+
+def test_bvar_build_expr():
+  lvar1 = LVariable('This', STRING, "", None, "lvar1")
+  lvar2 = LVariable(f'{lvar1} is', STRING, "", None, "lvar2")
+  cvar1 = CVariable(None, 'cvar1', 'test', '')
+  cvar2 = CVariable(None, 'cvar2', f'a {cvar1}', '')
+  bvar1 = BVariable('', None, 'bvar1', 'Dummy value')
+  bvar2 = BVariable('', None, 'bvar2', f'Here, {lvar2} {cvar2}. {bvar1}')
+
+  assert bvar2.build_expr == 'Here, This is a test. $(bvar1)'
+  assert bvar2.expanded == 'Here, This is a test. Dummy value'
+
+
+
 # 
 # #TODO: test BVariable
 # 
