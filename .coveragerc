@@ -1,0 +1,7 @@
+[report]
+exclude_also =
+  if TYPE_CHECKING
+  if debug
+  if __name__
+  !abstract
+  __repr__

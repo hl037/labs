@@ -42,11 +42,11 @@ class VariableType(object, metaclass=VariableTypeMeta):
   """
 
   @classmethod
-  def loads(cls, s:str) -> str|float|Path|bool:
+  def loads(cls, s:str) -> str|float|Path|bool: # !abstract
     raise NotImplementedError()
 
   @classmethod
-  def dumps(cls, o:str|float|Path|bool) -> str:
+  def dumps(cls, o:str|float|Path|bool) -> str: # !abstract
     raise NotImplementedError()
 
   @classmethod
@@ -233,9 +233,10 @@ class BOOL(VariableType):
       ) from e
 
 def escape(s:str, spec:str):
-  if spec == 'c' :
+  # TODO: test (covered by current tests, but can silently ignore errors
+  if FormatDispatcher.canonical_format.get(spec) in ('cache_reference', 'build_reference', 'expanded', 'reference') :
     return cmake.escape(s)
-  return s
+  raise ValueError(f"Invalid format specifier '{spec}' to escape string value")
 
 
 class Nil:

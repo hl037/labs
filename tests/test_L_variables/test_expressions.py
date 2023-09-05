@@ -163,7 +163,7 @@ def test_bvar_build_expr():
   assert bvar2.build_expr == 'Here, This is a test. $(bvar1)'
   assert bvar2.expanded == 'Here, This is a test. Dummy value'
 
-def test_bvar_build_expr():
+def test_lbvar_build_expr():
   lvar1 = LVariable('This', STRING, "", None, "lvar1")
   lvar2 = LVariable(f'{lvar1} is', STRING, "", None, "lvar2")
   cvar1 = CVariable(None, 'cvar1', 'test', '')
