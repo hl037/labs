@@ -24,6 +24,7 @@ from .variables import (
   BOOL,
   PATH,
   FILEPATH,
+  VariableType,
   CVariable,
   LVariable,
   BVariable,
@@ -36,6 +37,16 @@ from .variables import (
   lvariable,
   VariableReferenceCycleError,
 )
+
+from .metabuild import (
+  BRVariable,
+  BRVariableDecl,
+  brvariable,
+  BRule,
+  BStep,
+)
+
+from .core import LabsObject, UseInternal
 
 from icecream import ic
 
@@ -94,17 +105,22 @@ class LabsContext(object):
     }
 
 
-class LabsBuild(object):
+class LabsBuild(LabsObject, UseInternal):
   """
   Data store of the build. Holds all the variables, objects, etc.
   """
 
   #__slots__ = ('_internal',)
+  
+  class _Internal(object):
+    def __init__(self, parent):
+      self.cache:dict[str, Expr] = {}
+      self.lvariables:dict[str, LVariable] = {}
+      self.bvariables:dict[str, BVariable] = {}
+
 
   def __init__(self):
-    self._internal = Dict()
-    self._internal.cache = {}
-    self._internal.lvariables = {}
+    super().__init__()
 
   def __getattr__(self, key:str):
     print(key)
@@ -114,18 +130,24 @@ class LabsBuild(object):
     raise AttributeError(key)
 
   def __setattr__(self, key:str, val):
-    if key == '_internal' :
-      super().__setattr__('_internal', val)
+    if isinstance(val, LVariableDecl) :
+      self.add_lvariable(key, val)
+
+  def add_lvariable(self, name, default_value:LVariableDecl|Expr, type:VariableType=None, doc:str=''):
+    if isinstance(default_value, LVariableDecl) :
+      val = default_value
+    else :
+      val = LVariable.decl(default_value, type, doc)
     if isinstance(val, LVariableDecl) :
       if val.err is not None :
         (err_class, msg), from_err = val.err
-        raise err_class(msg.format(varname=key)) from from_err
-      if existing := self._internal.lvariables.get(key) :
+        raise err_class(msg.format(varname=name)) from from_err
+      if existing := self._internal.lvariables.get(name) :
         raise VariableRedeclaredError(existing)
         
-      var = val.instanciate(self, key)
-      self._internal.lvariables[key] = var
-      cache_var = self._internal.cache.get(key)
+      var = val.instanciate(self, name)
+      self._internal.lvariables[name] = var
+      cache_var = self._internal.cache.get(name)
       if cache_var :
         try :
           var.expr = cache_var.expr
@@ -134,6 +156,7 @@ class LabsBuild(object):
           var._expr = cache_var.expr
           var._expanded = format(cache_var.expr, 'e')
           raise CacheValueError(e, var) from e
+
   
   __setitem__ = __setattr__
   __getitem__ = __getattr__
@@ -162,7 +185,7 @@ class LabsBuild(object):
     
 
 
-class Labs(object):
+class Labs(LabsObject):
   """
   Main class to parse labs_build.py files.
   This is the backend used by the CLI. You should normally use the CLI to build a project,
@@ -170,10 +193,10 @@ class Labs(object):
 
   This class configures the build object used by the build file, then processes it.
   """
-  
+
   labs_filename = 'labs_build.py'
   cache_filename = 'labs_cache'
-  ninja_build_filename = 'build.ninja'
+  build_filename = 'build.ninja'
 
   relative_path_key = 'LABS_RELATIVE_PATHS'
   src_key = 'LABS_SOURCE_PATH'
@@ -258,9 +281,6 @@ class Labs(object):
       
       # with (build.abs_build_path/self.default_ninja_build_filename).open('w') as f :
       #   build.writeNinja(f)
-
-  def write_cache(self):
-    pass
 
 
 def __getattr__(key):

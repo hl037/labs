@@ -8,7 +8,7 @@ import re
 import weakref
 
 from .translation import tr
-from .core import LabsObject
+from .core import LabsObject, FormatDispatcher, canonical_format
 from labs import cmake
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
@@ -234,7 +234,7 @@ class BOOL(VariableType):
 
 def escape(s:str, spec:str):
   # TODO: test (covered by current tests, but can silently ignore errors
-  if FormatDispatcher.canonical_format.get(spec) in ('cache_reference', 'build_reference', 'expanded', 'reference') :
+  if canonical_format.get(spec) in ('cache_reference', 'build_reference', 'expanded', 'reference') :
     return cmake.escape(s)
   raise ValueError(f"Invalid format specifier '{spec}' to escape string value")
 
@@ -242,51 +242,12 @@ def escape(s:str, spec:str):
 class Nil:
   pass
 
-class FormatDispatcher(object):
-  """
-  Implements __format__ to dispatch to format_cache_reference, format_expanded and format_ref
-  """
-  canonical_format = {
-    'cache_reference': 'cache_reference',
-    'cr': 'cache_reference',
-    'build_reference': 'build_reference',
-    'br': 'build_reference',
-    'expanded': 'expanded',
-    'e': 'expanded',
-    'reference': 'reference',
-    'ref': 'reference',
-    'r': 'reference',
-    '': 'reference',
-  }
-
-  def __init_subclass__(cls, **kwargs):
-    super().__init_subclass__(**kwargs)
-    cls._format_functions = {}
-    if hasattr(cls, 'format_cache_reference') :
-      cls._format_functions['cr'] = cls.format_cache_reference
-      cls._format_functions['cache_reference'] = cls.format_cache_reference
-    if hasattr(cls, 'format_build_reference') :
-      cls._format_functions['br'] = cls.format_build_reference
-      cls._format_functions['build_reference'] = cls.format_build_reference
-    if hasattr(cls, 'format_expanded') :
-      cls._format_functions['e'] = cls.format_expanded
-      cls._format_functions['expanded'] = cls.format_expanded
-    if hasattr(cls, 'format_ref') :
-      cls._format_functions['r'] = cls.format_ref
-      cls._format_functions['ref'] = cls.format_ref
-      cls._format_functions['reference'] = cls.format_ref
-      cls._format_functions[''] = cls.format_ref
-
-  def __format__(self, spec):
-    return self._format_functions[spec](self)
-      
-    
 
 class Expandable(LabsObject):
   """
   May contains an expression, and can be expanded
   """
-  _repr_attrs = {'_expr': repr}
+  _repr_attrs = {'_expr=': repr}
   
   def __init__(self):
     self.dep_cycle = None
@@ -321,10 +282,6 @@ class Expandable(LabsObject):
       self._expanded = self.expand()
     return self._expanded
     
-  def format_expanded(self):
-    return self.expanded
-
-
 class Referenceable(LabsObject):
   """
   Object possible to reference in an expression
@@ -354,9 +311,6 @@ class Referenceable(LabsObject):
       raise ValueError("Variable already destroyed")
     return result
 
-  def format_ref(self):
-    return f'$(\x00{id(self)})'
-    
   def __add__(self, oth):
     return Expr(self) + oth
 
@@ -395,7 +349,7 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
   """
   Something that is written to the cache
   """
-  _repr_attrs = {'name': str}
+  _repr_attrs = {'name=': str}
   def __init__(self, build:labs.LabsBuild, name:str, doc:str|list[str]):
     RecursivelyReferenceable.__init__(self)
     FormatDispatcher.__init__(self)
@@ -416,9 +370,6 @@ class CacheOutput(RecursivelyReferenceable, FormatDispatcher):
       self._cache_expr = format(self.expr, 'cr')
     return self._cache_expr
   
-  def format_cache_reference(self):
-    return f'$({self.name})'
-
   def format_build_reference(self):
     return self.expanded
 
@@ -543,6 +494,11 @@ class LVariable(CacheOutput):
       except TypeError as e:
         err = (TypeError, f'Error on assigning the default value to the variable {variable_name}. {e.args[0]}'), e
     return cls.decl_cls(default_value=default_value, type=type, doc=doc, err=err)
+  
+
+  @classmethod
+  def instanciate(cls, decl, build, name):
+    return cls(decl.default_value, decl.type, decl.doc, build, name)
 
 
 class BVariable(RecursivelyReferenceable, FormatDispatcher):
@@ -550,7 +506,7 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher):
   Variable appearing in the ninja build file.
   A BVariable can be evaluated several time and its value can be changed
   """
-  _repr_attrs = {'name': str, 'expr':repr}
+  _repr_attrs = {'name=': str, 'expr=':repr}
   decl_cls:type = None # Assigned by VariableDecl
   
   def __init__(self,  doc:str, build:labs.LabsBuild, name:str, expr:Expr=None):
@@ -572,6 +528,11 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher):
   def decl(cls, expr:Expr=None, doc=None):
     return cls.decl_cls(expr=expr, doc=doc)
 
+  @classmethod
+  def instanciate(cls, decl, build, name):
+    return cls(decl.doc, build, name, decl.expr)
+
+
 
 class LBVariable(LVariable, BVariable):
   """
@@ -580,40 +541,34 @@ class LBVariable(LVariable, BVariable):
   format_build_reference = BVariable.format_build_reference
   
 
-class VariableDecl(LabsObject):
+class Decl(LabsObject):
   """
   Variable declaration.
   This is an helper function to distinguish variable being declared from variable existing. The build uses this distinction to cast to expression
   a variable.
   """
   
-  _repr_attrs = { 'type': repr, 'default_value': repr}    
   def __init_subclass__(cls_, cls, **kwargs):
     cls_.cls = cls
     cls.decl_cls = cls_
     super().__init_subclass__(**kwargs)
   
-  def __init__(self, *args, err=None, **kwargs):
-    self.args = args
-    self.kwargs = kwargs
+  def __init__(self, err=None, **kwargs):
     self.err = err
+    self.__dict__ |= kwargs
+      
 
-  def instanciate(self, build, name) -> LVariable:
-    return self.cls(
-      *self.args,
-      build=build,
-      name=name,
-      **self.kwargs,
-    )
+  def instanciate(self, *args, **kwargs):
+    return self.cls.instanciate(self, *args, **kwargs)
 
-class LVariableDecl(VariableDecl, cls=LVariable):
-  pass
+class LVariableDecl(Decl, cls=LVariable):
+  _repr_attrs = {'type=': repr, 'default_value=': repr}
 
-class BVariableDecl(VariableDecl, cls=BVariable):
-  pass
+class BVariableDecl(Decl, cls=BVariable):
+  _repr_attrs = {'expr=': repr}
 
-class LBVariableDecl(VariableDecl, cls=LBVariable):
-  pass
+class LBVariableDecl(Decl, cls=LBVariable):
+  _repr_attrs = {'type=': repr, 'default_value=': repr}
     
 lvariable = LVariable.decl
 bvariable = BVariable.decl
@@ -686,3 +641,4 @@ class Expr(LabsObject):
   def __str__(self):
     return format(self, '')
 
+from . import formatters
