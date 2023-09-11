@@ -9,7 +9,11 @@ class DefaultDict(defaultdict):
     res = self.default_factory(key)
     self[key] = res
     return res
-
+  
+def topologicalSort(iterable, neighbors_cb, reverse=True):
+  graph = Graph(iterable, neighbors_cb)
+  return [ node.data for node in graph.topologicalSort(reverse) ]
+  
 class Graph(object):
   class CycleError(RuntimeError):
     pass
@@ -31,30 +35,30 @@ class Graph(object):
   def topologicalSort(self, reverse = True):
     VISITED = object()
     PROCESSED = object()
-    d = deque()
-    s = deque()
+    sorted_nodes = deque()
+    stack = deque()
     for n in self.node.values() :
       if n.state == None :
-        s.append((False, n))
+        stack.append((False, n))
         n.state = VISITED
-      while s :
-        end, n = s.pop()
+      while stack :
+        end, n = stack.pop()
         if end :
-          d.append(n.data)
+          sorted_nodes.append(n.data)
           n.state = PROCESSED
         else:
-          s.append((True, n))
+          stack.append((True, n))
           for u in n.adj :
             if u.state is PROCESSED :
               continue
             if u.state is VISITED :
               raise self.CycleError(u)
-            s.append((False, u))
+            stack.append((False, u))
             u.state = VISITED
     if reverse :
-      return reversed(d)
+      return reversed(sorted_nodes)
     else:
-      return d
+      return sorted_nodes
   
   
 def dict2Graph(d:dict) -> Graph:
