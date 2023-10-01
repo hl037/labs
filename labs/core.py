@@ -50,7 +50,7 @@ class LabsObject(object):
     if print_label :
       return f'{label}={value}'
     else :
-      return cast(value)
+      return value
 
   def __repr__(self):
     attrs = ', '.join( self._repr_attr(attr, cast) for attr, cast in self._all_repr_attrs.items() )
@@ -80,12 +80,40 @@ class FormatDispatcher(object):
 canonical_format = {}
 format_functions = {}
 
-@staticmethod
-def formatter(*specs):
-  def decorator(f):
+def register_formatter(function, *specs):
     global canonical_format
     global format_functions
     canonical_format |= { s : specs[0] for s in specs }
-    format_functions |= { s : f for s in specs }
+    format_functions |= { s : function for s in specs }
+  
+
+class Formatter(LabsObject):
+  """
+  A formater for a labs object
+  """
+  _repr_attrs = {'name': repr, 'self': lambda self: 'Compatible types: ' + ', '.join( t.__name__ for types, _ in self.subs for t in types )}
+
+  def __init__(self, *specs:str):
+    register_formatter(self, *specs)
+    self.name = specs[0] if specs else 'None'
+    self.subs = []
+
+  def sub(self, *types:type):
+    def decorator(f):
+      self.subs.append((types, f))
+    return decorator
+
+  def __call__(self, _self):
+    try :
+      f = next(f for types, f in self.subs if isinstance(_self, types))
+    except StopIteration:
+      raise TypeError()
+    return f(_self)
+
+
+@staticmethod
+def formatter(*specs):
+  def decorator(f):
+    register_formatter(f, *specs)
     return f
   return decorator

@@ -18,7 +18,7 @@ from labs import (
   Expr,
   CacheValueError,
   VariableReferenceCycleError,
-  BVariableAssignedToLVariableError,
+  ExprTypeError,
 )
 
 def test_default_value_init():
@@ -150,7 +150,7 @@ def test_assign_bvar_to_lvar_err():
   bvar = BVariable('', None, 'bvar')
   bvar.expr = "test"
   lvar = LVariable(f'This is a Test with {bvar} assigned to lvar', STRING, "", None, "lvar")
-  with pytest.raises(BVariableAssignedToLVariableError) as exc_info:
+  with pytest.raises(ExprTypeError) as exc_info:
     lvar.evaluate()
   assert exc_info.match('bvar')
   assert exc_info.match('lvar')

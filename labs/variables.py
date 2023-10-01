@@ -24,7 +24,7 @@ class VariableReferenceCycleError(RuntimeError):
     super().__init__(f'{msg} : {cycle_msg}')
   pass
 
-class BVariableAssignedToLVariableError(TypeError):
+class ExprTypeError(TypeError):
   pass
 
 class VariableTypeMeta(type):
@@ -423,8 +423,8 @@ class LVariable(CacheOutput):
   def set_expr(self, expr:Expr):
     if self._value is not Nil :
       raise LVariableAlreadyEvaluatedError("Can't change the expression of {self.name} because it has already been evaluated")
-    if part := next(( part for part in expr.parts if (isinstance(part, BVariable) and not isinstance(part, LBVariable)) ), None) :
-      raise BVariableAssignedToLVariableError(f"A BVariable cannot be part of the expression of an LVariable. ({repr(part)} assigned to {repr(self)}) ")
+    if part := next(( part for part in expr.parts if not isinstance(part, (str, CacheOutput)) ), None) :
+      raise ExprTypeError(f"A {part.__class__.__name__} cannot be part of the expression of an LVariable. ({repr(part)} assigned to {repr(self)}) ")
     super().set_expr(expr)
 
   def cycle_detected(self, expr, cycle):
@@ -500,45 +500,6 @@ class LVariable(CacheOutput):
   def instanciate(cls, decl, build, name):
     return cls(decl.default_value, decl.type, decl.doc, build, name)
 
-
-class BVariable(RecursivelyReferenceable, FormatDispatcher):
-  """
-  Variable appearing in the ninja build file.
-  A BVariable can be evaluated several time and its value can be changed
-  """
-  _repr_attrs = {'name=': str, 'expr=':repr}
-  decl_cls:type = None # Assigned by VariableDecl
-  
-  def __init__(self,  doc:str, build:labs.LabsBuild, name:str, expr:Expr=None):
-    super().__init__()
-    self.doc = doc
-    self.build = build
-    self.name = name
-    if expr is not None :
-      self.expr = Expr(expr)
-    
-  @property
-  def build_expr(self):
-    return format(self.expr, 'br')
-
-  def format_build_reference(self):
-    return f'$({self.name})'
-
-  @classmethod
-  def decl(cls, expr:Expr=None, doc=None):
-    return cls.decl_cls(expr=expr, doc=doc)
-
-  @classmethod
-  def instanciate(cls, decl, build, name):
-    return cls(decl.doc, build, name, decl.expr)
-
-
-
-class LBVariable(LVariable, BVariable):
-  """
-  A LVariable which is also exported in the ninja.build
-  """
-  format_build_reference = BVariable.format_build_reference
   
 
 class Decl(LabsObject):
@@ -564,15 +525,7 @@ class Decl(LabsObject):
 class LVariableDecl(Decl, cls=LVariable):
   _repr_attrs = {'type=': repr, 'default_value=': repr}
 
-class BVariableDecl(Decl, cls=BVariable):
-  _repr_attrs = {'expr=': repr}
-
-class LBVariableDecl(Decl, cls=LBVariable):
-  _repr_attrs = {'type=': repr, 'default_value=': repr}
-    
 lvariable = LVariable.decl
-bvariable = BVariable.decl
-lbvariable = LBVariable.decl
 
 
 class Expr(LabsObject):

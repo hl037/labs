@@ -1,21 +1,30 @@
-from .core import formatter
-from .variables import Expandable, Referenceable, CacheOutput, LBVariable
+from .core import Formatter
+from . import variables
 
-@formatter('expanded', 'e')
-def format_expanded(self):
-  if isinstance(self, Expandable) :
-    return self.expanded
-  raise TypeError()
+Expandable = variables.Expandable
+Referenceable = variables.Referenceable
+CacheOutput = variables.CacheOutput
 
-@formatter('cache_reference', 'cr')
-def format_cache_reference(self):
-  if isinstance(self, CacheOutput) :
-    return f'$({self.name})'
-  raise TypeError()
 
-@formatter('reference', 'r', 'ref', '')
-def format_reference(self):
-  if isinstance(self, Referenceable) :
-    return f'$(\x00{id(self)})'
-  raise TypeError()
+
+format_expanded = Formatter('expanded', 'e')
+
+@format_expanded.sub(Expandable)
+def _(self:Expandable):
+  return self.expanded
+
+
+format_cache_reference = Formatter('cache_reference', 'cr')
+
+@format_cache_reference.sub(CacheOutput)
+def _(self:CacheOutput):
+  return f'$({self.name})'
+
+
+format_reference = Formatter('reference', 'r', 'ref', '')
+
+@format_reference.sub(Referenceable)
+def _(self:Referenceable):
+  return f'$(\x00{id(self)})'
+  
   

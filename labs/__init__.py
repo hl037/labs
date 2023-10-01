@@ -27,9 +27,7 @@ from .variables import (
   VariableType,
   CVariable,
   LVariable,
-  BVariable,
-  LBVariable,
-  BVariableAssignedToLVariableError,
+  ExprTypeError,
   LVariableDecl,
   Expr,
   LVariableAlreadyEvaluatedError,
@@ -39,9 +37,15 @@ from .variables import (
 )
 
 from .metabuild import (
+  BVariable,
+  BVariableDecl,
+  GBVariable,
+  LBVariable,
+  LBVariableDecl,
   BRVariable,
   BRVariableDecl,
   brvariable,
+  BuiltinBRVariable,
   BRule,
   BStep,
 )

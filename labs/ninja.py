@@ -1,6 +1,6 @@
-from .core import formatter
-from .variables import BVariable
-from .metabuild import BRVariable, BuiltinBRVariable, BRule, BStep
+from .core import Formatter
+from .variables import Expandable
+from .metabuild import GBVariable, BRVariable, BuiltinBRVariable, BRule, BStep
 
 def scoped_name(var:BVariable):
   if isinstance(var, BRVariable) :
@@ -10,27 +10,30 @@ def scoped_name(var:BVariable):
   return var.name
     
 
-@formatter('ninja_reference', 'nr')
-def format_ninja_reference(self):
-  if isinstance(self, BVariable) :
-    return f'$({scoped_name(self)})'
-    
-  if isinstance(self, Expandable) :
-    return self.expanded
-  raise TypeError()
+format_ninja_reference = Formatter('ninja_reference', 'nr')
 
-def bvariable_adj_cb(var:BVariable):
+@format_ninja_reference.sub(BVariable)
+def _(self:Bvariable):
+  return f'$({scoped_name(self)})'
+
+@format_ninja_reference.sub(Expandable)
+def _(self:Expandable):
+  return self.expanded
+  
+
+def bvariable_adj_cb(var:GBVariable):
   expr = var.expr
+  return ( p for p in expr.parts if isinstance(p, GBVariable) )
 
 
-@formatter('ninja', 'n')
-def format_ninja(self):
-  if isinstance(self, BVariable) :
-    return f'{scoped_name(self)} = {format(self.expr, "nr")}'
-  if isinstance(self, BRule) :
-    variables = 
-    
-  if isinstance(self, Expandable) :
-    return self.expanded
-  raise TypeError()
+format_ninja = Formatter('ninja', 'n')
 
+@format_ninja.sub(GBVariable)
+def _(self:GBVariable):
+  return f'{scoped_name(self)} = {format(self.expr, "nr")}'
+  
+@format_ninja.sub(BRule)
+def _(self:BRule):
+  variables = sorted(self._internal.builtins.values(), lambda v: v.name)
+  variable_txt = ''.join( f'\n  {var:n}' for var in variables )
+  return f'rule {self._internal.name}:{variable_txt}'
