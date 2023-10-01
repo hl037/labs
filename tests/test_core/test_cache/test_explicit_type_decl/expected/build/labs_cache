@@ -26,6 +26,10 @@ IN_PATH:PATH=test1/test2
 // (Default : Test)
 IN_STRING:STRING=Test
 
+// Generator to use
+// (Default : ninja)
+LABS_GENERATOR:STRING=ninja
+
 // Should paths be relatives ?
 // (Default : False)
 LABS_RELATIVE_PATHS:BOOL=False

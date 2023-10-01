@@ -204,6 +204,7 @@ class Labs(LabsObject):
 
   relative_path_key = 'LABS_RELATIVE_PATHS'
   src_key = 'LABS_SOURCE_PATH'
+  generator_key = 'LABS_GENERATOR'
 
   def __init__(self, src_path:Path|str=None, build_path:Path|str=None, config=dict(), use_cache=True):
     """
@@ -229,6 +230,7 @@ class Labs(LabsObject):
         build.update_cache(self.parse_cache(cache_path))
       build.update_cache({ key: (value, []) for key, value in config.items() })
 
+    setattr(build, self.generator_key, LVariable.decl('ninja', STRING, doc=tr('Generator to use')))
     setattr(build, self.relative_path_key, LVariable.decl(False, BOOL, doc=tr('Should paths be relatives ?')))
     relative_paths = getattr(build, self.relative_path_key).value
 
