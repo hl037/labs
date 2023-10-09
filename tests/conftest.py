@@ -15,7 +15,7 @@ def build():
   
 @pytest.fixture
 def expectBuild(expectdir, build):
-  def test():
+  def test(*args):
     with expectdir(current_dir_replace_string='{{test_dir}}') as e :
-      build(e)
+      build(e, *args)
   return test

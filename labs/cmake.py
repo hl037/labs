@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
   
 from .utils import Dict
-from .variables import LVariable, CVariable, Expr
+from . import variables
 
 if TYPE_CHECKING :
+  from .variables import LVariable, CVariable, Expr
   from typing import IO
 
 _id = r'[_a-zA-Z][_0-9A-Za-z]*'
@@ -60,23 +61,23 @@ def var_to_cache(name:str, value:str, type:str='INTERNAL', desc:list[str]=[], de
   res += f'{name}:{type}={value}'
   return res
 
-def write_cache(f:IO, variables: dict[str, LVariable|CVariable]):
-  variable_list = list(variables.values())
+def write_cache(f:IO, variables_map: dict[str, LVariable|CVariable]):
+  variable_list = list(variables_map.values())
   for v in variable_list:
-    if isinstance(v, LVariable) and not v.is_evaluated :
+    if isinstance(v, variables.LVariable) and not v.is_evaluated :
       v.evaluate()
   variable_list.sort(key=lambda v: v.name)
   for v in variable_list :
-    if isinstance(v, LVariable) :
+    if isinstance(v, variables.LVariable) :
       f.write(var_to_cache(
         v.name,
         v.cache_expr,
         v.type.__name__,
         v.doc,
-        format(v.default_value, 'cr') if isinstance(v.default_value, Expr) else v.type.dumps(v.default_value)
+        format(v.default_value, 'cr') if isinstance(v.default_value, variables.Expr) else v.type.dumps(v.default_value)
       ))
       f.write('\n\n')
-    elif isinstance(v, CVariable) :
+    elif isinstance(v, variables.CVariable) :
       f.write(var_to_cache(
         v.name,
         v.cache_expr,

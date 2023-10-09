@@ -10,11 +10,12 @@ import click
 @click.option('-D', type=str, multiple=True)
 @click.option('--debug', '-g', is_flag=True, default=False)
 @click.option('--clean', is_flag=True)
-def main(src, build_dir, d, debug, clean):
+@click.option('--no-generator', '-G', is_flag=True)
+def main(src, build_dir, d, debug, clean, no_generator):
   try:
     D = d
     config = dict(d.split('=', maxsplit=1) for d in D)
-    labs = Labs(src, build_dir, config, use_cache=not clean)
+    labs = Labs(src, build_dir, config, use_cache=not clean, output_generator=not no_generator)
     labs.process()
   except:
     if debug :
@@ -24,6 +25,5 @@ def main(src, build_dir, d, debug, clean):
 
 if __name__ == "__main__" :
   main()
-
 
 

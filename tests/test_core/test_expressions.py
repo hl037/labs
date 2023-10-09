@@ -117,21 +117,21 @@ def test_concat():
 
 
 def test_variable_resolution_nocache(expectBuild):
-  expectBuild()
+  expectBuild('-G')
   
 def test_variable_resolution_cache(expectBuild):
-  expectBuild()
+  expectBuild('-G')
   
 def test_variable_err_does_not_exist(expectBuild):
   with pytest.raises(CacheValueError) as exc_info:
-    expectBuild()
+    expectBuild('-G')
   assert exc_info.match('assign var3')
   assert exc_info.match('`does_not_exist` does not exist')
 
 
 def test_cycle_detection_cvar(expectBuild):
   with pytest.raises(CacheValueError) as exc_info:
-    expectBuild()
+    expectBuild('-G')
   assert exc_info.match('assign var3 from cache')
   assert exc_info.match('var3->var1->var2->var3')
   

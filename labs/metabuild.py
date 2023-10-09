@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .core import LabsObject, UseInternal, FormatDispatcher
-import labs
 from .variables import Expr, CacheOutput, Decl, ExprTypeError, RecursivelyReferenceable, LVariable
 
+if TYPE_CHECKING :
+  from .main import LabsBuild
 
-class BVariable(RecursivelyReferenceable, FormatDispatcher):
+class MetabuildObject(object):
+  """
+  An object to be output in the metabuild
+  """
+
+
+class BVariable(RecursivelyReferenceable, FormatDispatcher, MetabuildObject):
   """
   Variable appearing in the ninja build file.
   A BVariable can be evaluated several time and its value can be changed
@@ -13,7 +22,7 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher):
   _repr_attrs = {'name=': str, 'expr=':repr}
   decl_cls:type = None # Assigned by VariableDecl
   
-  def __init__(self,  doc:str, build:labs.LabsBuild, name:str, expr:Expr=None):
+  def __init__(self,  doc:str, build:LabsBuild, name:str, expr:Expr=None):
     super().__init__()
     self.doc = doc
     self.build = build
@@ -43,7 +52,7 @@ class GBVariable(BVariable):
       raise ExprTypeError(f"A {part.__class__.__name__} cannot be part of the expression of a GBVariable. ({repr(part)} assigned to {repr(self)}) ")
     super().set_expr(expr)
 
-class LBVariable(LVariable, BVariable):
+class LBVariable(LVariable, GBVariable):
   """
   A LVariable which is also exported in the ninja.build
   """
@@ -84,14 +93,14 @@ brvariable = BRVariable.decl
 
 
 
-class BRule(LabsObject, UseInternal):
+class BRule(LabsObject, UseInternal, MetabuildObject):
   """
   Rule for building a step. Translates to a rule in ninja
   """
   _repr_attrs = {'_internal.name': None}
 
   class _Internal(object):
-    def __init__(self, parent:BRule, build:labs.LabsBuild, name:str):
+    def __init__(self, parent:BRule, build:LabsBuild, name:str):
       self.build = build
       self.name = name
       self.variables:dict[str, BRVariable] = {}
@@ -119,7 +128,7 @@ class BRule(LabsObject, UseInternal):
       else :
         self.variables[var.name] = var
 
-  def __init__(self, build:labs.LabsBuild, name:str):
+  def __init__(self, build:LabsBuild, name:str):
     super().__init__(build, name)
     object.__setattr__(self, 'in_', self._internal.builtins['in'])
 
@@ -144,7 +153,7 @@ class BRule(LabsObject, UseInternal):
     
 
 
-class BStep(LabsObject, UseInternal):
+class BStep(LabsObject, UseInternal, MetabuildObject):
   """
   A build step. Translates to build in ninja
   """

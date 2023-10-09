@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from enum import Enum, IntEnum
 from collections import deque
-import labs
+import labs.main as labs
 from pathlib import Path
 import re
 import weakref
 
 from .translation import tr
 from .core import LabsObject, FormatDispatcher, canonical_format
-from labs import cmake
+from . import cmake
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
   pass
@@ -331,10 +331,19 @@ class RecursivelyReferenceable(Expandable, Referenceable):
       self.cycle_detected(expr, cycle)
     super().set_expr(expr)
 
+  @property
+  def dependencies(self):
+    return RecursivelyReferenceable(self.expr)
+
+  @staticmethod
+  def expr_dependencies(expr):
+    return ( part for part in expr.parts if isinstance(part, RecursivelyReferenceable) )
+    
+
   def find_cycle(self, expr:Expr|None, source) -> list[RecursivelyReferenceable]:
     if expr is None :
       return []
-    for dep in ( part for part in expr.parts if isinstance(part, RecursivelyReferenceable) ):
+    for dep in RecursivelyReferenceable.expr_dependencies(expr):
       if dep is source :
         return [self]
       if res := dep.find_cycle(dep.expr, source) :
@@ -517,7 +526,6 @@ class Decl(LabsObject):
   def __init__(self, err=None, **kwargs):
     self.err = err
     self.__dict__ |= kwargs
-      
 
   def instanciate(self, *args, **kwargs):
     return self.cls.instanciate(self, *args, **kwargs)

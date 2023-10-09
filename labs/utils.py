@@ -10,9 +10,9 @@ class DefaultDict(defaultdict):
     self[key] = res
     return res
   
-def topologicalSort(iterable, neighbors_cb, reverse=True):
+def topological_sort(iterable, neighbors_cb, reverse=True):
   graph = Graph(iterable, neighbors_cb)
-  return [ node.data for node in graph.topologicalSort(reverse) ]
+  return [ node.data for node in graph.topological_sort(reverse) ]
   
 class Graph(object):
   class CycleError(RuntimeError):
@@ -32,7 +32,7 @@ class Graph(object):
         n_n.adj.append(node[u])
     self.node = node
 
-  def topologicalSort(self, reverse = True):
+  def topological_sort(self, reverse = True):
     VISITED = object()
     PROCESSED = object()
     sorted_nodes = deque()
@@ -64,7 +64,7 @@ class Graph(object):
 def dict2Graph(d:dict) -> Graph:
   return Graph(d.keys(), d.__getitem__)
 
-def relativeTo(from_:Path, to:Path):
+def relative_to(from_:Path, to:Path):
   from_ = from_.absolute()
   to = to.absolute()
   f_parts = from_.parts
