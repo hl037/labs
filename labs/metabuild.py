@@ -35,8 +35,10 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher, MetabuildObject):
     return cls.decl_cls(expr=expr, doc=doc)
 
   @classmethod
-  def instanciate(cls, decl, build, name):
-    return cls(decl.doc, build, name, decl.expr)
+  def instanciate(cls, decl:Decl, build:LabsBuild, name:str):
+    r = cls(decl.doc, build, name, decl.expr)
+    build._register_metabuild_object(name, r)
+    return r
   
 class BVariableDecl(Decl, cls=BVariable):
   _repr_attrs = {'expr=': repr}
@@ -76,8 +78,8 @@ class AbstractBRVariable(BVariable):
     self.rule = rule
   
   @classmethod
-  def instanciate(cls, decl, rule, name):
-    return cls(decl.doc, rule, name, decl.expr)
+  def instanciate(cls, decl:Decl, rule:BRule, name:str):
+    r = cls(decl.doc, rule, name, decl.expr)
 
 class BRVariable(AbstractBRVariable, GBVariable):
   pass
@@ -98,6 +100,8 @@ class BRule(LabsObject, UseInternal, MetabuildObject):
   Rule for building a step. Translates to a rule in ninja
   """
   _repr_attrs = {'_internal.name': None}
+  
+  decl_cls:type = None # Assigned by BRuleDecl
 
   class _Internal(object):
     def __init__(self, parent:BRule, build:LabsBuild, name:str):
@@ -150,7 +154,22 @@ class BRule(LabsObject, UseInternal, MetabuildObject):
       
   def __contains__(self, key):
     return key in self._internal.builtins or key in self._internal.variables
-    
+
+  @classmethod
+  def instanciate(cls, decl, build, name):
+    r = cls(build, name)
+    build._register_metabuild_object(name, r)
+    return r
+
+  @classmethod
+  def decl(cls):
+    return cls.decl_cls()
+
+class BRuleDecl(Decl, cls=BRule):
+  pass
+
+brule = BRule.decl
+
 
 
 class BStep(LabsObject, UseInternal, MetabuildObject):
@@ -204,5 +223,19 @@ class BStep(LabsObject, UseInternal, MetabuildObject):
   __getattr__ = __getitem__
   __setattr__ = __setitem__
 
+  @classmethod
+  def instanciate(cls, decl, build, name):
+    r = cls(decl.rule, name)
+    build._register_metabuild_object(name, r)
+    return r
+
+  @classmethod
+  def decl(cls, rule):
+    return cls.decl_cls(rule=rule)
+
+class BStepDecl(Decl, cls=BStep):
+  pass
+
+bstep = BStep.decl
 
 

@@ -139,48 +139,40 @@ class LabsBuild(LabsObject, UseInternal):
     raise AttributeError(key)
 
   def __setattr__(self, key:str, val:Decl):
-    if not isinstance(val, Decl) :
+    self.add(key, val)
+
+  def add(self, name:str, decl:Decl):
+    if not isinstance(decl, Decl) :
       raise TypeError('Values assigned to the build should be Decl')
-    if (current_val:=getattr(self,  key, Nil)) != Nil :
-      raise BuildObjectRedeclaredError(key, val, current_val)
-    if issubclass(val.cls, LVariable) :
-      self.add_lvariable(key, val)
-    if issubclass(val.cls, MetabuildObject) :
-      self.add_metabuild_object_decl(key, val)
+    if (current_val:=getattr(self,  name, Nil)) != Nil :
+      raise BuildObjectRedeclaredError(name, decl, current_val)
+    return decl.instanciate(self, name)
+    
 
   def __contains__ (self, key):
     return hasattr(self, key) or key in self._internal.lvariables or key in self._internal.metabuild_bjects
 
-  def add_lvariable(self, name:str, default_value:LVariableDecl|Expr, type:VariableType=None, doc:str=''):
-    if isinstance(default_value, LVariableDecl) :
-      val = default_value
-    else :
-      val = LVariable.decl(default_value, type, doc)
-    if isinstance(val, LVariableDecl) :
-      if val.err is not None :
-        (err_class, msg), from_err = val.err
-        raise err_class(msg.format(varname=name)) from from_err
-        
-      var = val.instanciate(self, name)
-      self._internal.lvariables[name] = var
-      cache_var = self._internal.cache.get(name)
-      if cache_var :
-        try :
-          var.expr = cache_var.expr
-        except ValueError as e:
-          var._value = None
-          var._expr = cache_var.expr
-          var._expanded = format(cache_var.expr, 'e')
-          raise CacheValueError(e, var) from e
+  def add_lvariable(self, name:str, default_value:Expr, type:VariableType=None, doc:str=''):
+    val = LVariable.decl(default_value, type, doc)
+    self.add(name, val)
 
   def add_metabuild_object_decl(self, name:str, decl: Decl):
     self.add_metabuild_object(name, decl.instanciate(self, name))
     
-  def add_metabuild_object(self, name:str, mobj:MetabuildObject):
-    if name in self._internal.metabuild_objects :
-      raise ValueError('Object with same name already assigned')
+  def _register_metabuild_object(self, name:str, mobj:MetabuildObject):
     self._internal.metabuild_objects[name] = mobj
     
+  def _register_lvariable(self, name:str, lvariable:LVariable):
+    self._internal.lvariables[name] = lvariable
+    cache_var = self._internal.cache.get(name)
+    if cache_var :
+      try :
+        lvariable.expr = cache_var.expr
+      except ValueError as e:
+        lvariable._value = None
+        lvariable._expr = cache_var.expr
+        lvariable._expanded = format(cache_var.expr, 'e')
+        raise CacheValueError(e, lvariable) from e
 
   
   __setitem__ = __setattr__

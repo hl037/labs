@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING :
+  from .main import Labs, LabsBuild
+
 from enum import Enum, IntEnum
 from collections import deque
 import labs.main as labs
@@ -491,23 +496,24 @@ class LVariable(CacheOutput):
 
   @classmethod
   def decl(cls, default_value, type:VariableType=None, doc:str=''):
-    err = None
     if type is None :
       try :
         type = VariableType.typeOf(default_value)
       except TypeError as e:
-        err = (LVariableTypeInferenceError, f"Can't infer the type of {{varname}}. {e.args[0]}"), e
+        raise LVariableTypeInferenceError(f"Can't infer the type of {{varname}}. {e.args[0]}") from  e
     elif not isinstance(default_value, Expr) :
       try :
         default_value = type.cast(default_value)
       except TypeError as e:
-        err = (TypeError, f'Error on assigning the default value to the variable {variable_name}. {e.args[0]}'), e
-    return cls.decl_cls(default_value=default_value, type=type, doc=doc, err=err)
+        raise TypeError(f'Error on assigning the default value to the variable {variable_name}. {e.args[0]}') from e
+    return cls.decl_cls(default_value=default_value, type=type, doc=doc)
   
 
   @classmethod
-  def instanciate(cls, decl, build, name):
-    return cls(decl.default_value, decl.type, decl.doc, build, name)
+  def instanciate(cls, decl:Decl, build:LabsBuild, name:str):
+    r = cls(decl.default_value, decl.type, decl.doc, build, name)
+    build._register_lvariable(name, r)
+    return r
 
   
 
