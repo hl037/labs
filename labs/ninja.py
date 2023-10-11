@@ -10,11 +10,19 @@ from . import main
 if TYPE_CHECKING :
   from .main import LabsBuild
 
+class MissingCommandInRules(RuntimeError):
+  def __init__(self, rules):
+    self.rules = rules
+    super().__init__(
+      'In the following rules, the `command` variable has no value. This is invalid in ninja: ' +
+      ', '.join( repr(r) for r in rules )
+    )
+
 def scoped_name(var:BVariable):
   if isinstance(var, BRVariable) :
-    if isinstance(self, BuiltinBRVariable) :
+    if isinstance(var, BuiltinBRVariable) :
       return var.name
-    return f'_rule_{var.rule._internal.name}_{var.name})'
+    return f'_rule_{var.rule._internal.name}_{var.name}'
   return var.name
     
 
@@ -22,7 +30,7 @@ format_ninja_reference = Formatter('ninja_reference', 'nr')
 
 @format_ninja_reference.sub(BVariable)
 def _(self:Bvariable):
-  return f'$({scoped_name(self)})'
+  return f'${{{scoped_name(self)}}}'
 
 @format_ninja_reference.sub(Expandable)
 def _(self:Expandable):
@@ -38,13 +46,16 @@ format_ninja = Formatter('ninja', 'n')
 
 @format_ninja.sub(GBVariable)
 def _(self:GBVariable):
-  return f'{scoped_name(self)} = {format(self.expr, "nr")}'
+  if self.expr is None :
+    return f'{scoped_name(self)} ='
+  else :
+    return f'{scoped_name(self)} = {format(self.expr, "nr")}'
   
 @format_ninja.sub(BRule)
 def _(self:BRule):
   variables = sorted(self._internal.builtins.values(), key=lambda v: v.name)
-  variable_txt = ''.join( f'\n  {var:n}' for var in variables )
-  return f'rule {self._internal.name}:{variable_txt}'
+  variable_txt = ''.join( f'\n  {var:n}' for var in variables if var.expr is not None )
+  return f'rule {self._internal.name}{variable_txt}'
 
 def header(build:LabsBuild):
   return f"""
@@ -54,16 +65,19 @@ def header(build:LabsBuild):
 
 @generator('ninja')
 def write_ninja(build:LabsBuild):
-  out = build._internal.build_path / 'ninja.build'
+  out = build._internal.build_path / 'build.ninja'
   objects = build._internal.metabuild_objects.values()
   rules = [ obj for obj in objects if isinstance(obj, BRule) ]
+  invalid_rules = [ r for r in rules if r.command.expr is None or not r.command.value ]
+  if invalid_rules :
+    raise MissingCommandInRules(invalid_rules)
   gbvariables = [ obj for obj in objects if isinstance(obj, GBVariable) ]
   gbvariables.extend( v for r in rules for v in r._internal.variables.values() )
   steps = [ obj for obj in objects if isinstance(obj, BStep) ]
 
   sorted_variables = topological_sort(sorted(gbvariables, key=lambda v: scoped_name(v)), lambda var: var.dependencies, False)
-  sorted_rules = sorted(rules, key=lambda r: r.name)
-  sorted_steps = sorted(steps, key=lambda s: s.name)
+  sorted_rules = sorted(rules, key=lambda r: r._internal.name)
+  sorted_steps = sorted(steps, key=lambda s: s._internal.name)
   with open(out, 'w') as f :
     f.write(header(build))
     f.write('\n\n')

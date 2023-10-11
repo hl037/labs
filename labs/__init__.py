@@ -67,4 +67,6 @@ __all__ = [
   'bstep'
 ]
 
+build:LabsBuild
+
 

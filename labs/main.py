@@ -157,8 +157,8 @@ class LabsBuild(LabsObject, UseInternal):
   def add_bvariable(self, name:str, expr:Expr, doc:str=None):
     return self.add(name, GBVariable.decl(expr, doc))
   
-  def add_brule(self, name):
-    return self.add(name, BRule.decl())
+  def add_brule(self, name, command=None):
+    return self.add(name, BRule.decl(command))
 
   def add_bstep(self, name, rule):
     return self.add(name, BStep.decl(rule))

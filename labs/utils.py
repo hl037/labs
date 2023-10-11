@@ -80,4 +80,8 @@ def relative_to(from_:Path, to:Path):
     common_root_len += 1
   return Path(*(('../',) * (len(t_parts) - common_root_len)), *f_parts[common_root_len:])
 
+def apply(*args, **kwargs):
+  """Same as map, bu not lazy"""
+  deque(map(*args, **kwargs), maxlen=0)
+
 
