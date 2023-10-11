@@ -1,0 +1,12 @@
+// Generator to use
+// (Default : ninja)
+LABS_GENERATOR:STRING=ninja
+
+// Should paths be relatives ?
+// (Default : False)
+LABS_RELATIVE_PATHS:BOOL=False
+
+// Source directory path. labs_build.py should be in this directory.
+// (Default : {{test_dir}})
+LABS_SOURCE_PATH:FILEPATH={{test_dir}}
+

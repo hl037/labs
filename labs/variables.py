@@ -13,8 +13,7 @@ import re
 import weakref
 
 from .translation import tr
-from .core import LabsObject, FormatDispatcher, canonical_format
-from . import cmake
+from .core import LabsObject, FormatDispatcher, canonical_format, escape
 
 class LVariableAlreadyEvaluatedError(RuntimeError):
   pass
@@ -237,13 +236,6 @@ class BOOL(VariableType):
         reason=str(e))
       ) from e
 
-def escape(s:str, spec:str):
-  # TODO: test (covered by current tests, but can silently ignore errors
-  if canonical_format.get(spec) in ('cache_reference', 'build_reference', 'expanded', 'reference') :
-    return cmake.escape(s)
-  raise ValueError(f"Invalid format specifier '{spec}' to escape string value")
-
-
 class Nil:
   pass
 
@@ -338,7 +330,7 @@ class RecursivelyReferenceable(Expandable, Referenceable):
 
   @property
   def dependencies(self):
-    return RecursivelyReferenceable(self.expr)
+    return RecursivelyReferenceable.expr_dependencies(self.expr)
 
   @staticmethod
   def expr_dependencies(expr):

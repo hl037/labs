@@ -31,16 +31,20 @@ from .variables import (
 
 from .metabuild import (
   BVariable,
-  BVariableDecl,
   GBVariable,
+  GBVariableDecl,
+  bvariable,
   LBVariable,
+  lbvariable,
   LBVariableDecl,
   BRVariable,
   BRVariableDecl,
   brvariable,
   BuiltinBRVariable,
   BRule,
+  brule,
   BStep,
+  bstep,
 )
 
 __getattr__ = main__getattr__
@@ -58,6 +62,9 @@ __all__ = [
   'LVariableAlreadyEvaluatedError',
   'LVariableTypeInferenceError',
   'lvariable',
+  'bvariable',
+  'brule',
+  'bstep'
 ]
 
 

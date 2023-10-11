@@ -40,8 +40,6 @@ class BVariable(RecursivelyReferenceable, FormatDispatcher, MetabuildObject):
     build._register_metabuild_object(name, r)
     return r
   
-class BVariableDecl(Decl, cls=BVariable):
-  _repr_attrs = {'expr=': repr}
 
 
 class GBVariable(BVariable):
@@ -54,6 +52,10 @@ class GBVariable(BVariable):
       raise ExprTypeError(f"A {part.__class__.__name__} cannot be part of the expression of a GBVariable. ({repr(part)} assigned to {repr(self)}) ")
     super().set_expr(expr)
 
+class GBVariableDecl(Decl, cls=GBVariable):
+  _repr_attrs = {'expr=': repr}
+  
+  
 class LBVariable(LVariable, GBVariable):
   """
   A LVariable which is also exported in the ninja.build

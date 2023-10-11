@@ -40,8 +40,8 @@ from .variables import (
 from .metabuild import (
   MetabuildObject,
   BVariable,
-  BVariableDecl,
   GBVariable,
+  GBVariableDecl,
   LBVariable,
   LBVariableDecl,
   BRVariable,
@@ -148,17 +148,21 @@ class LabsBuild(LabsObject, UseInternal):
       raise BuildObjectRedeclaredError(name, decl, current_val)
     return decl.instanciate(self, name)
     
-
   def __contains__ (self, key):
     return hasattr(self, key) or key in self._internal.lvariables or key in self._internal.metabuild_bjects
 
   def add_lvariable(self, name:str, default_value:Expr, type:VariableType=None, doc:str=''):
-    val = LVariable.decl(default_value, type, doc)
-    self.add(name, val)
+    return self.add(name, LVariable.decl(default_value, type, doc))
 
-  def add_metabuild_object_decl(self, name:str, decl: Decl):
-    self.add_metabuild_object(name, decl.instanciate(self, name))
-    
+  def add_bvariable(self, name:str, expr:Expr, doc:str=None):
+    return self.add(name, GBVariable.decl(expr, doc))
+  
+  def add_brule(self, name):
+    return self.add(name, BRule.decl())
+
+  def add_bstep(self, name, rule):
+    return self.add(name, BStep.decl(rule))
+
   def _register_metabuild_object(self, name:str, mobj:MetabuildObject):
     self._internal.metabuild_objects[name] = mobj
     
@@ -314,19 +318,5 @@ thread_local.ctx = None
 if TYPE_CHECKING :
   build:LabsBuild = None
   ctx:LabsBuild = None
-
-__all__ = [
-  'LVariable',
-  'build',
-  'ctx',
-  'BOOL', 'NUMBER', 'INT', 'FLOAT', 'STRING', 'PATH', 'FILEPATH',
-  'Expr',
-  'Path',
-  'Dict',
-  'BuildObjectRedeclaredError',
-  'LVariableAlreadyEvaluatedError',
-  'LVariableTypeInferenceError',
-  'lvariable',
-]
 
 from . import ninja

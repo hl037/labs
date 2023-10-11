@@ -23,6 +23,8 @@ class Graph(object):
       self.data = data
       self.adj = []
       self.state = None
+    def __repr__(self):
+      return f'Node(data={repr(self.data)}, adj=[{", ".join( "Node("+repr(n.data)+")" for n in self.adj )}])'
       
   def __init__(self, iterable, neighbors_cb):
     node = DefaultDict(lambda n: self.Node(n))
@@ -33,8 +35,8 @@ class Graph(object):
     self.node = node
 
   def topological_sort(self, reverse = True):
-    VISITED = object()
-    PROCESSED = object()
+    VISITED = "VISITED"
+    PROCESSED = "PROCESSED"
     sorted_nodes = deque()
     stack = deque()
     for n in self.node.values() :
@@ -43,10 +45,13 @@ class Graph(object):
         n.state = VISITED
       while stack :
         end, n = stack.pop()
+        if n.state is PROCESSED :
+          continue # case when several deps appear multiple time, and have been added also multiple times to the stack.
         if end :
-          sorted_nodes.append(n.data)
+          sorted_nodes.append(n)
           n.state = PROCESSED
         else:
+          n.state = VISITED
           stack.append((True, n))
           for u in n.adj :
             if u.state is PROCESSED :
@@ -54,7 +59,6 @@ class Graph(object):
             if u.state is VISITED :
               raise self.CycleError(u)
             stack.append((False, u))
-            u.state = VISITED
     if reverse :
       return reversed(sorted_nodes)
     else:

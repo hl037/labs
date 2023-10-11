@@ -1,4 +1,64 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING :
+  from typing import Callable
+  
 from . import main
+
+def _attr_label(attr_name:str):
+  if attr_name.startswith('_internal.') :
+    return attr_name[10:]
+  if attr_name[0] in ( '.', '_'):
+    return attr_name[1:]
+  return attr_name
+
+def _update_attrs(current:dict, new:dict):
+  keyset = { _attr_label : attr for attr in current.keys() }
+  toremobv
+
+
+def _repr_attr_getattr(self, attr):
+  return getattr(self, attr)
+
+def _repr_attr_self(self, attr):
+  return self
+
+def _repr_attr_internal(self, attr):
+  return getattr(self._internal, attr)
+
+def _parse_repr_attr(attr:str):
+  if attr == 'self' :
+    return '', _repr_attr_self, False, attr
+  
+  print_label = attr[-1] == '='
+  if print_label :
+    attr = attr[:-1]
+  func = _repr_attr_getattr
+    
+  if attr[0] == '.' :
+    attr = attr[1:]
+    func = _repr_attr_self
+  elif attr.startswith('_internal.') :
+    attr = attr[10:]
+    func = _repr_attr_internal
+    
+  label = attr
+  if label[0] == '_':
+    label = label[1:]
+
+  return label, func, print_label, attr
+
+def _make_attr_cache(attr_dict):
+  return {
+    label: content
+    for label, *content in (
+      (*_parse_repr_attr(attr), attr, cast)
+      for attr, cast in attr_dict.items()
+    )
+  }
+  
 
 class LabsObject(object):
   """
@@ -7,53 +67,34 @@ class LabsObject(object):
   
   _repr_attrs = {}
   _all_repr_attrs = {}
+  _cache_repr_attrs:dict[tuple[Callable, bool, str, str, Callable]] = {} # label -> (repr_handler, should_print_label, lookup_attr, original_attr_string, cast_function)
+
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
+    cache = {}
     if '_all_repr_attrs' not in cls.__dict__ :
-      if '_repr_attrs' in cls.__dict__ :
-        cls._all_repr_attrs = {**cls._repr_attrs}
-      else :
-        cls._all_repr_attrs = {}
-      for parent in cls.__bases__ :
+      for parent in reversed(cls.__bases__) :
         if issubclass(parent, LabsObject) :
-          cls._all_repr_attrs.update({ attr: cast for attr, cast in parent._all_repr_attrs.items() if attr not in cls._all_repr_attrs })
+          cache.update(parent._cache_repr_attrs)
+    else : 
+      cache.update(_make_attr_cache(cls._all_repr_attrs))
+    if '_repr_attrs' in cls.__dict__ :
+      cache.update(_make_attr_cache(cls._repr_attrs))
+    cls._all_repr_attrs = { original: cast for func, print_label, attr, original, cast in cache.values()}
+    cls._cache_repr_attrs = cache
 
-  def _repr_attr(self, attr:str, cast):
-    if attr == 'self' :
-      return cast(self)
-    
-    print_label = attr[-1] == '='
-    if print_label :
-      attr = attr[:-1]
-    obj = None
-      
-    if attr[0] == '.' :
-      attr = attr[1:]
-      obj = self
-    elif attr.startswith('_internal.') :
-      attr = attr[10:]
-      obj = self._internal[attr]
-      
-    label = attr
-    if label[0] == '_':
-      label = label[1:]
-
-    if obj is None :
-      obj = getattr(self, attr)
-
+  def _repr_attr(self, label, content):
+    func, print_label, attr, _, cast = content
+    val = func(self, attr)
     if cast :
-      value = cast(obj)
-    else :
-      value = obj
-    
+      val = cast(val)
     if print_label :
-      return f'{label}={value}'
-    else :
-      return value
+      return f'{label}={val}'
+    return val
 
   def __repr__(self):
-    attrs = ', '.join( self._repr_attr(attr, cast) for attr, cast in self._all_repr_attrs.items() )
+    attrs = ', '.join( self._repr_attr(label, content) for label, content in self._cache_repr_attrs.items() )
     return f'{self.__class__.__name__}({attrs})'
     
 class UseInternal(object):
@@ -86,12 +127,12 @@ def register_formatter(function, *specs):
 
 generators = {}
 
-def registor_generator(generator, name):
+def register_generator(generator, name):
   generators[name] = generator
 
 def generator(name):
   def decorator(f):
-    registor_generator(f, name)
+    register_generator(f, name)
   return decorator
 
 class UnkownGeneratorError(RuntimeError):
@@ -129,3 +170,25 @@ def formatter(*specs):
     register_formatter(f, *specs)
     return f
   return decorator
+
+
+escape_functions = {}
+
+def register_escape_function(escape_function, *specs):
+  escape_functions.update({ s : escape_function for s in specs })
+  
+def escape_function(*specs):
+  def decorator(f):
+    register_escape_function(f, *specs)
+    return f
+  return decorator
+
+def escape(s:str, spec:str):
+  # TODO: test (covered by current tests, but can silently ignore errors
+  canonical = canonical_format.get(spec)
+  escape_function = escape_functions.get(canonical)
+  if not escape_function :
+    raise ValueError(f"Invalid format specifier '{spec}' to escape string value")
+  return escape_function(s)
+    
+
