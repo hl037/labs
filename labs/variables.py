@@ -543,13 +543,13 @@ class Expr(LabsObject):
   @internal self.parts is a list of either string or variable references
   """
   _repr_attrs = {'self': lambda s: ', '.join( repr(p) for p in s.parts )}
-  def __init__(self, *args:Expr|Expandable|str):
+  def __init__(self, *args:Expr|FormatDispatcher|str):
     self.parts = []
     for a in args :
       self += a
   
-  def __iadd__(self, e:Expr|Expandable|str):
-    if isinstance(e, Expandable) :
+  def __iadd__(self, e:Expr|FormatDispatcher|str):
+    if isinstance(e, FormatDispatcher) :
       self.parts.append(e)
     else :
       new_parts = None
